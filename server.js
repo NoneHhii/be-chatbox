@@ -5,10 +5,9 @@ const cors = require("cors");
 const http = require("http");
 const {Server} = require("socket.io");
 
-const authRoutes = require("./routes/authRoutes");
-const messageRoutes = require("./routes/messageRoute");
-const chatSocket = require("./websocket/chatSocket");
-const { log } = require("console");
+const authRoutes = require("./src/routes/authRoutes");
+const messageRoutes = require("./src/routes/messageRoute");
+const chatSocket = require("./src/websocket/chatSocket");
 
 const app = express();
 

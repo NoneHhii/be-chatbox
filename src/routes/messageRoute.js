@@ -10,7 +10,7 @@ router.post(
  "/upload",
  auth,
  upload.single("file"),
- messageController.uploadFile
+ msg.uploadFile
 );
 
 module.exports = router;
