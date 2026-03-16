@@ -3,14 +3,14 @@ const pool = require("../config/db");
 exports.createUser = async(data) => {
     const query = `
         INSERT INTO Account(user_id, userName, email, phone, avatar, password, is_online, create_at) 
-        VALUE($1, $2, $3, $4, $5, $6, $7, $8) 
+        VALUES($1, $2, $3, $4, $5, $6, $7, $8) 
         RETURNING *
     `;
     return pool.query(query, data);
 }
 
-exports.findEmail = (email) => {
-    return pool.query(
+exports.findEmail = async (email) => {
+    return await pool.query(
         "SELECT * FROM Account WHERE email = $1",
         [email]
     );
