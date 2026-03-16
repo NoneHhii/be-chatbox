@@ -5,13 +5,13 @@ const userModel = require("../models/userModel");
 
 exports.register = async(req, res) => {
     try {
-        const {userName, email, phone, avatar, password, is_online, create_at} = req.body;
+        const {username, email, phone, avatar, password, is_online, create_at} = req.body;
 
         const hash = await bcrypt.hash(password, 10);
 
         const user = [
             uuidv4(),
-            userName,
+            username,
             email,
             phone,
             avatar,
