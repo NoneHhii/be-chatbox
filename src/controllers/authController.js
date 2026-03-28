@@ -89,6 +89,21 @@ exports.updateProfile = async(req,res)=>{
 
 };
 
+exports.findAccount = async(req, res) => {
+    try {
+        const {value} = req.body;
+
+        if(!value) return res.status(400).json({error: "Missing value"});
+
+        const result = await userModel.findUser(value);
+
+        if(result.rows.length === 0) return res.status(400).json({error: "User not found"});
+    } catch(err) {
+        console.error(err);
+        res.status(500).json({error: "find account failure"});
+    }
+}
+
 
 exports.logout = async(req,res)=>{
 

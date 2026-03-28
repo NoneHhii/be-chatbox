@@ -9,9 +9,9 @@ exports.createUser = async(data) => {
     return pool.query(query, data);
 }
 
-exports.findEmail = async (email) => {
+exports.findUser = async (email) => {
     return await pool.query(
-        "SELECT * FROM Account WHERE email = $1",
-        [email]
+        "SELECT * FROM Account WHERE email = $1 OR phone = $1",
+        [value]
     );
 };

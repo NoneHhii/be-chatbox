@@ -7,5 +7,6 @@ router.post("/login", auth.login);
 router.get("/me", authMiddleware, auth.me);
 router.put("/update", authMiddleware, auth.updateProfile);
 router.post("/logout", authMiddleware, auth.logout);
+router.post("/find", auth.findAccount);
 
 module.exports = router;
