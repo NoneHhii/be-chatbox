@@ -1,6 +1,12 @@
 exports.sendRequest = async(req,res)=>{
+    const senderId = req.user.id;
+    const {receiverId} = req.body;
 
- const {receiverId} = req.body;
+    if(!receiverId) return res.status(400).json({err: "Missing receiverId"});
+
+    if(senderId === receiverId) return res.status(400).json({err: "Cannot send yourself"});
+
+    
 
  await pool.query(
  `
