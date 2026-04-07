@@ -111,21 +111,42 @@ exports.me = async(req,res)=>{
 };
 
 
-exports.updateProfile = async(req,res)=>{
+exports.updateProfile = async (req, res) => {
+    try {
+        const {
+            username,
+            name,
+            email,
+            phone,
+            avatar
+        } = req.body;
 
- const {username,avatar} = req.body;
+        const finalUsername = username || name;
 
- await pool.query(
- `
- UPDATE Account
- SET username=$1, avatar=$2
- WHERE user_id=$3
- `,
- [username,avatar,req.user.id]
- );
+        const result = await pool.query(
+            `
+            UPDATE Account
+            SET
+                username = COALESCE($1, username),
+                email = COALESCE($2, email),
+                phone = COALESCE($3, phone),
+                avatar = COALESCE($4, avatar)
+            WHERE user_id = $5
+            RETURNING *
+            `,
+            [finalUsername, email, phone, avatar, req.user.id]
+        );
 
- res.json({message:"updated"});
+        if (!result.rows.length) {
+            return res.status(404).json({message: "User not found"});
+        }
 
+        const {password: _, ...safeUserInfo} = result.rows[0];
+        res.json({message: "updated", user: safeUserInfo});
+    } catch (error) {
+        console.log(error);
+        res.status(500).json({message: "Failed to update profile"});
+    }
 };
 
 exports.findAccount = async(req, res) => {
