@@ -2,7 +2,8 @@ const router = require("express").Router();
 const auth  = require("../controllers/authController");
 const authMiddleware = require("../middleware/authMiddleware");
 
-router.post("/register", auth.register);
+router.post('/register-request', auth.sendRegistrationOTP);
+router.post('/verify-register', auth.verifyAndRegister);
 router.post("/login", auth.login);
 router.get("/me", authMiddleware, auth.me);
 router.put("/update", authMiddleware, auth.updateProfile);

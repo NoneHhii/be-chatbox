@@ -7,18 +7,12 @@ module.exports = (io) => {
     console.log("User connected", socket.id);
 
     socket.on("user_online", async (userId) => {
+      socket.userId = userId;
+      socket.join(userId);
 
       await pool.query(
         `UPDATE Account SET is_online=true WHERE user_id=$1`,
         [userId]
-      );
-
-      await pool.query(
-        `INSERT INTO User_socket(user_id,socket_id)
-         VALUES($1,$2)
-         ON CONFLICT(user_id)
-         DO UPDATE SET socket_id=$2`,
-        [userId, socket.id]
       );
 
       io.emit("user_status", {
@@ -30,25 +24,17 @@ module.exports = (io) => {
 
     socket.on("disconnect", async () => {
 
-      const result = await pool.query(
-        "SELECT user_id FROM User_socket WHERE socket_id=$1",
-        [socket.id]
-      );
+      if(socket.userId) {
 
-      if (result.rows.length) {
+          await pool.query(
+            `UPDATE Account SET is_online=false WHERE user_id=$1`,
+            [socket.userId]
+          );
 
-        const userId = result.rows[0].user_id;
-
-        await pool.query(
-          `UPDATE Account SET is_online=false WHERE user_id=$1`,
-          [userId]
-        );
-
-        io.emit("user_status", {
-          userId,
-          status: "offline"
-        });
-
+          io.emit("user_status", {
+            userId: socket.userId,
+            status: "offline"
+          });
       }
 
     });

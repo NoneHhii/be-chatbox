@@ -3,30 +3,69 @@ const jwt = require('jsonwebtoken');
 const {v4: uuidv4} = require('uuid');
 const userModel = require("../models/userModel");
 
-exports.register = async(req, res) => {
+const mailer = require('../utils/mailer');
+
+// API 1: Gửi OTP
+exports.sendRegistrationOTP = async (req, res) => {
     try {
-        const {username, email, phone, avatar, password, is_online, create_at} = req.body;
+        const { email, username } = req.body;
+        const otp = Math.floor(100000 + Math.random() * 900000).toString(); // Tạo mã 6 số
 
-        const hash = await bcrypt.hash(password, 10);
+        // Lưu vào bảng otp_verification (Xóa cái cũ nếu có)
+        await pool.query(`
+            INSERT INTO otp_verification (email, otp, user_data, expires_at)
+            VALUES ($1, $2, $3, NOW() + INTERVAL '5 minutes')
+            ON CONFLICT (email) DO UPDATE 
+            SET otp = $2, user_data = $3, expires_at = NOW() + INTERVAL '5 minutes'
+        `, [email, otp, JSON.stringify(req.body)]);
 
-        const user = [
-            uuidv4(),
-            username,
-            email,
-            phone,
-            avatar,
-            hash,
-            is_online,
-            create_at
-        ];
-
-        const result = await userModel.createUser(user);
-        res.json(result.rows[0]);
+        await mailer.sendOTP(email, otp);
+        res.json({ message: "Mã OTP đã được gửi vào Email" });
     } catch (error) {
         console.log(error);
-        res.status(500).json("Register failure!");
+        res.status(500).json("Không thể gửi OTP");
     }
-}
+};
+
+// API 2: Xác thực và Tạo User (Hàm register của bạn bây giờ sẽ gọi ở đây)
+exports.verifyAndRegister = async (req, res) => {
+    try {
+        const { email, otp } = req.body;
+
+        // 1. Kiểm tra OTP
+        const result = await pool.query(
+            "SELECT * FROM otp_verification WHERE email = $1 AND otp = $2 AND expires_at > NOW()",
+            [email, otp]
+        );
+
+        if (result.rows.length === 0) {
+            return res.status(400).json("Mã OTP không đúng hoặc đã hết hạn");
+        }
+
+        // 2. Lấy dữ liệu user đã lưu tạm để tạo tài khoản thật
+        const userData = result.rows[0].user_data;
+        const hash = await bcrypt.hash(userData.password, 10);
+        
+        const user = {
+            user_id: uuidv4(),
+            username: userData.username,
+            email: userData.email,
+            avatar: userData.avatar || `https://api.dicebear.com/7.x/avataaars/png?seed=${userData.username}`,
+            password: hash,
+            is_online: true,
+            create_at: new Date()
+        };
+
+        const finalResult = await userModel.createUser(user);
+        
+        // 3. Xóa OTP sau khi dùng xong
+        await pool.query("DELETE FROM otp_verification WHERE email = $1", [email]);
+
+        res.json(finalResult.rows[0]);
+    } catch (error) {
+        res.status(500).json("Đăng ký thất bại");
+    }
+};
 
 exports.login = async (req, res) => {
     try {
