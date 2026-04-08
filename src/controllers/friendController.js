@@ -102,9 +102,14 @@ exports.getFriends = async(req,res)=>{
 
     try {
         const result = await pool.query(`
-        SELECT u.* FROM FriendRequest fr 
-        JOIN Account u ON fr.sender_id = u.user_id 
-        WHERE fr.receiver_id = $1 AND fr.status = 'accepted' 
+        SELECT u.* FROM friend fr 
+        JOIN Account u ON ( 
+            CASE 
+                WHEN fr.user_id1 = $1 THEN fr.user_id2 = u.user_id
+                WHEN fr.user_id2 = $1 THEN fr.user_id1 = u.user_id 
+            END
+        )
+        WHERE fr.user_id1 = $1 OR fr.user_id2 = $1 
         ORDER BY fr.create_at DESC
     `, [req.user.id]);
 
