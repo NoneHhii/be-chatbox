@@ -25,7 +25,7 @@ exports.sendRegistrationOTP = async (req, res) => {
         res.json({ message: "Mã OTP đã được gửi vào Email" });
     } catch (error) {
         console.log(error);
-        res.status(500).json("Không thể gửi OTP");
+        res.status(500).json("Không thể gửi OTP" + error);
     }
 };
 
