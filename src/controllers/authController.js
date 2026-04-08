@@ -126,7 +126,10 @@ exports.updateProfile = async (req, res) => {
 
         let finalAvatar = req.body.avatar;
 
-        if(req.file) finalAvatar = await uploadFile(req.file);
+        if(req.file) {
+            const file = req.file[0];
+            finalAvatar = await uploadFile(file);
+        }
 
         const result = await pool.query(
             `

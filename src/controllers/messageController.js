@@ -173,3 +173,34 @@ exports.uploadFile = async (req, res) => {
     });
 };
 
+// exports.handleUpload = async (req, res) => {
+//     try {
+//         // Kiểm tra xem có file nào được gửi lên không
+//         if (!req.files || req.files.length === 0) {
+//             return res.status(400).json("Không có file nào được chọn");
+//         }
+
+//         // Dùng map để tạo danh sách các Promise upload
+//         const uploadPromises = req.files.map(file => uploadFile(file));
+
+//         // Đợi tất cả upload xong và lấy về mảng các URL từ CloudFront/S3
+//         const fileUrls = await Promise.all(uploadPromises);
+
+//         // Trường hợp 1: Nếu là Update Profile (chỉ lấy cái đầu tiên)
+//         if (req.path.includes('profile')) {
+//             const avatarUrl = fileUrls[0];
+//             // ... Update DB cho Account ...
+//             return res.json({ message: "Updated profile", avatar: avatarUrl });
+//         }
+
+//         // Trường hợp 2: Nếu là Chat (trả về toàn bộ danh sách URL)
+//         res.json({
+//             message: "Uploaded successfully",
+//             urls: fileUrls // Trả về mảng để Frontend gửi qua Socket
+//         });
+
+//     } catch (error) {
+//         console.error(error);
+//         res.status(500).json("Lỗi khi xử lý file");
+//     }
+// };

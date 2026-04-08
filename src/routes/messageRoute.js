@@ -6,11 +6,11 @@ const upload = require("../middleware/uploadMiddleware");
 router.post("/send", msg.sendMessage);
 router.get("/:id", auth, msg.getMessages);
 
-router.post(
- "/upload",
- auth,
- upload.single("file"),
- msg.uploadFile
-);
+// router.post(
+//  "/upload",
+//  auth,
+//  upload("file"),
+//  msg.uploadFile
+// );
 
 module.exports = router;
