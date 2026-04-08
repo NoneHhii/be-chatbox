@@ -3,6 +3,7 @@ const jwt = require('jsonwebtoken');
 const {v4: uuidv4} = require('uuid');
 const userModel = require("../models/userModel");
 const pool = require("../config/db");
+const uploadFile = require('../services/file.service');
 
 const mailer = require('../utils/mailer');
 
@@ -119,10 +120,13 @@ exports.updateProfile = async (req, res) => {
             name,
             email,
             phone,
-            avatar
         } = req.body;
 
         const finalUsername = username || name;
+
+        let finalAvatar = req.body.avatar;
+
+        if(req.file) finalAvatar = await uploadFile(req.file);
 
         const result = await pool.query(
             `
@@ -135,7 +139,7 @@ exports.updateProfile = async (req, res) => {
             WHERE user_id = $5
             RETURNING *
             `,
-            [finalUsername, email, phone, avatar, req.user.id]
+            [finalUsername, email, phone, finalAvatar, req.user.id]
         );
 
         if (!result.rows.length) {
