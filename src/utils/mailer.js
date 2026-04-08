@@ -1,10 +1,19 @@
 const nodemailer = require('nodemailer');
 
 const transporter = nodemailer.createTransport({
-    service: 'gmail',
+    host: 'smtp.gmail.com',
+    port: 465,
+    secure: true,
     auth: {
         user: "thienkhoatgddqng@gmail.com",
-        pass: process.env.AppPassword
+        pass: process.env.AppPassword 
+    },
+    // THÊM ĐOẠN NÀY ĐỂ FIX LỖI ENETUNREACH
+    connectionTimeout: 10000, // 10 giây
+    greetingTimeout: 10000,
+    socketTimeout: 10000,
+    dnsLookup: (hostname, options, callback) => {
+        require('dns').lookup(hostname, { family: 4 }, callback);
     }
 });
 
