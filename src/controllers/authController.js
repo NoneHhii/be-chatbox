@@ -2,6 +2,7 @@ const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const {v4: uuidv4} = require('uuid');
 const userModel = require("../models/userModel");
+const pool = require("../config/db");
 
 const mailer = require('../utils/mailer');
 
