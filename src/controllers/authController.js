@@ -127,7 +127,7 @@ exports.updateProfile = async (req, res) => {
         let finalAvatar = req.body.avatar;
 
         if(req.file) {
-            const file = req.file[0];
+            const file = req.file;
             finalAvatar = await uploadFile(file);
         }
 
@@ -176,7 +176,69 @@ exports.findAccount = async(req, res) => {
 
 
 exports.logout = async(req,res)=>{
+    try {
+        const result = await pool.query(`
+        UPDATE Account 
+            SET is_online = false, 
+            last_seen = NOW() 
+        WHERE user_id = $1 
+        RETURNING *
+    `, [req.user.id]);
 
- res.json({message:"logout success"});
+    res.json({message:"logout success"});
+    } catch (error) {
+        console.error("logout failure " + error);
+        res.status(500).json({error: "logout failure"});
+    }
 
+};
+
+exports.forgotPasswordRequest = async (req, res) => {
+    try {
+        const { email } = req.body;
+
+        const userCheck = await pool.query("SELECT * FROM Account WHERE email = $1", [email]);
+        if (userCheck.rows.length === 0) {
+            return res.status(404).json("Email này chưa được đăng ký!");
+        }
+
+        const otp = Math.floor(100000 + Math.random() * 900000).toString();
+        
+        await pool.query(`
+            INSERT INTO otp_verification (email, otp, expires_at, user_data)
+            VALUES ($1, $2, NOW() + INTERVAL '5 minutes', '{"type": "reset_password"}')
+            ON CONFLICT (email) DO UPDATE SET otp = $2, expires_at = NOW() + INTERVAL '5 minutes'
+        `, [email, otp]);
+
+        await mailer.sendOTP(email, otp);
+        res.json({ message: "Mã khôi phục đã được gửi vào Email" });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json("Lỗi hệ thống");
+    }
+};
+
+exports.resetPassword = async (req, res) => {
+    try {
+        const { email, otp, newPassword } = req.body;
+
+        const otpResult = await pool.query(
+            "SELECT * FROM otp_verification WHERE email = $1 AND otp = $2 AND expires_at > NOW()",
+            [email, otp]
+        );
+
+        if (otpResult.rows.length === 0) {
+            return res.status(400).json("Mã xác thực không đúng hoặc hết hạn");
+        }
+
+        const hash = await bcrypt.hash(newPassword, 10);
+        await pool.query("UPDATE Account SET password = $1 WHERE email = $2", [hash, email]);
+
+        await pool.query("DELETE FROM otp_verification WHERE email = $1", [email]);
+
+        res.json({ message: "Đặt lại mật khẩu thành công!" });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json("Không thể đặt lại mật khẩu");
+    }
 };
