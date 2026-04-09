@@ -3,7 +3,7 @@ const jwt = require('jsonwebtoken');
 const {v4: uuidv4} = require('uuid');
 const userModel = require("../models/userModel");
 const pool = require("../config/db");
-const uploadFile = require('../services/file.service');
+const {uploadFile} = require('../services/file.service');
 
 const mailer = require('../utils/mailer');
 
@@ -135,10 +135,10 @@ exports.updateProfile = async (req, res) => {
             `
             UPDATE Account
             SET
-                username = COALESCE($1, username),
-                email = COALESCE($2, email),
-                phone = COALESCE($3, phone),
-                avatar = COALESCE($4, avatar)
+                username = CASE WHEN $1::text IS NOT NULL AND $1 <> '' THEN $1 ELSE username END, 
+                email = CASE WHEN $2::text IS NOT NULL AND $2 <> '' THEN $2 ELSE email END, 
+                phone = CASE WHEN $3::text IS NOT NULL AND $3 <> '' THEN $3 ELSE phone END, 
+                avatar = CASE WHEN $4::text IS NOT NULL AND $4 <> '' THEN $4 ELSE avatar END 
             WHERE user_id = $5
             RETURNING *
             `,
@@ -197,7 +197,7 @@ exports.forgotPasswordRequest = async (req, res) => {
     try {
         const { email } = req.body;
 
-        const userCheck = await pool.query("SELECT * FROM Account WHERE email = $1", [email]);
+        const userCheck = await pool.query("SELECT * FROM Account WHERE email = $1 ", [email]);
         if (userCheck.rows.length === 0) {
             return res.status(404).json("Email này chưa được đăng ký!");
         }
@@ -205,10 +205,10 @@ exports.forgotPasswordRequest = async (req, res) => {
         const otp = Math.floor(100000 + Math.random() * 900000).toString();
         
         await pool.query(`
-            INSERT INTO otp_verification (email, otp, expires_at, user_data)
-            VALUES ($1, $2, NOW() + INTERVAL '5 minutes', '{"type": "reset_password"}')
-            ON CONFLICT (email) DO UPDATE SET otp = $2, expires_at = NOW() + INTERVAL '5 minutes'
-        `, [email, otp]);
+            INSERT INTO otp_verification (email, otp, expires_at, user_data) 
+            VALUES ($1, $2, NOW() + INTERVAL '5 minutes', $3) 
+            ON CONFLICT (email) DO UPDATE SET otp = $2, expires_at = NOW() + INTERVAL '5 minutes' 
+        `, [email, otp, JSON.stringify({ type: "reset_password" })]);
 
         await mailer.sendOTP(email, otp);
         res.json({ message: "Mã khôi phục đã được gửi vào Email" });
@@ -223,7 +223,7 @@ exports.resetPassword = async (req, res) => {
         const { email, otp, newPassword } = req.body;
 
         const otpResult = await pool.query(
-            "SELECT * FROM otp_verification WHERE email = $1 AND otp = $2 AND expires_at > NOW()",
+            "SELECT * FROM otp_verification WHERE email = $1 AND otp = $2 AND expires_at > NOW() ",
             [email, otp]
         );
 
@@ -232,9 +232,9 @@ exports.resetPassword = async (req, res) => {
         }
 
         const hash = await bcrypt.hash(newPassword, 10);
-        await pool.query("UPDATE Account SET password = $1 WHERE email = $2", [hash, email]);
+        await pool.query("UPDATE Account SET password = $1 WHERE email = $2 ", [hash, email]);
 
-        await pool.query("DELETE FROM otp_verification WHERE email = $1", [email]);
+        await pool.query("DELETE FROM otp_verification WHERE email = $1 ", [email]);
 
         res.json({ message: "Đặt lại mật khẩu thành công!" });
     } catch (error) {
