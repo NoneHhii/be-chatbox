@@ -110,7 +110,7 @@ exports.getFriends = async(req,res)=>{
             END
         )
         WHERE fr.user_id1 = $1 OR fr.user_id2 = $1 
-        ORDER BY fr.create_at DESC
+        ORDER BY fr.created_at DESC
     `, [req.user.id]);
 
     res.json(result.rows);

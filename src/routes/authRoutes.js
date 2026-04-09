@@ -10,5 +10,7 @@ router.get("/me", authMiddleware, auth.me);
 router.put("/update", authMiddleware, upload.single("avatar"), auth.updateProfile);
 router.post("/logout", authMiddleware, auth.logout);
 router.post("/find", auth.findAccount);
+router.post("/forgot-password", auth.forgotPasswordRequest);
+router.post("/reset-password", auth.resetPassword);
 
 module.exports = router;
