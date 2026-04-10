@@ -1,5 +1,5 @@
 require('dotenv').config();
-const {s3} = require('../config/aws-config');
+const s3 = require('../config/aws-config');
 
 const randomString = numberCharacter => {
     return `${Math.random().toString(36).substring(2, numberCharacter + 2)}`;
