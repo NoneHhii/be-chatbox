@@ -11,6 +11,22 @@ const {sendOTPEmail} = require('../utils/mailer');
 exports.sendRegistrationOTP = async (req, res) => {
     try {
         const { email, username } = req.body;
+
+        const checkExist = await pool.query(
+            "SELECT email, username FROM Account WHERE email = $1 OR username = $2",
+            [email, username]
+        );
+
+        if (checkExist.rows.length > 0) {
+            const existingUser = checkExist.rows[0];
+            if (existingUser.email === email) {
+                return res.status(400).json("Email này đã được đăng ký!");
+            }
+            if (existingUser.username === username) {
+                return res.status(400).json("Tên đăng nhập đã tồn tại!");
+            }
+        }
+        
         const otp = Math.floor(100000 + Math.random() * 900000).toString(); // Tạo mã 6 số
 
         // Lưu vào bảng otp_verification (Xóa cái cũ nếu có)
