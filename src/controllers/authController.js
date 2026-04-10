@@ -5,7 +5,7 @@ const userModel = require("../models/userModel");
 const pool = require("../config/db");
 const {uploadFile} = require('../services/file.service');
 
-const mailer = require('../utils/mailer');
+const sendOTP = require('../utils/mailer');
 
 // API 1: Gửi OTP
 exports.sendRegistrationOTP = async (req, res) => {
@@ -207,7 +207,10 @@ exports.forgotPasswordRequest = async (req, res) => {
         await pool.query(`
             INSERT INTO otp_verification (email, otp, expires_at, user_data) 
             VALUES ($1, $2, NOW() + INTERVAL '5 minutes', $3) 
-            ON CONFLICT (email) DO UPDATE SET otp = $2, expires_at = NOW() + INTERVAL '5 minutes' 
+            ON CONFLICT (email) DO UPDATE SET 
+                otp = EXCLUDED.otp, 
+                expires_at = EXCLUDED.expires_at,
+                user_data = EXCLUDED.user_data -- Cập nhật luôn cả user_data mới
         `, [email, otp, JSON.stringify({ type: "reset_password" })]);
 
         await mailer.sendOTP(email, otp);
