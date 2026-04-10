@@ -21,7 +21,7 @@ exports.sendRegistrationOTP = async (req, res) => {
             SET otp = $2, user_data = $3, expires_at = NOW() + INTERVAL '5 minutes'
         `, [email, otp, JSON.stringify(req.body)]);
 
-        await mailer.sendOTP(email, otp);
+        await sendOTP(email, otp);
         res.json({ message: "Mã OTP đã được gửi vào Email" });
     } catch (error) {
         console.log(error);
@@ -213,7 +213,7 @@ exports.forgotPasswordRequest = async (req, res) => {
                 user_data = EXCLUDED.user_data -- Cập nhật luôn cả user_data mới
         `, [email, otp, JSON.stringify({ type: "reset_password" })]);
 
-        await mailer.sendOTP(email, otp);
+        await sendOTP(email, otp);
         res.json({ message: "Mã khôi phục đã được gửi vào Email" });
     } catch (error) {
         console.error(error);
