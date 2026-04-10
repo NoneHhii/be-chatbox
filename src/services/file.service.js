@@ -42,7 +42,6 @@ const uploadFile = async file => {
         Body: file.buffer,
         Key: filePath,
         ContentType: file?.mimetype,
-        ACL: 'public-read'
     };
 
     try {
