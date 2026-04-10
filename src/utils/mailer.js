@@ -1,6 +1,8 @@
 const nodemailer = require("nodemailer");
 
 const sendOTPEmail = async (userEmail, otpCode) => {
+
+    console.log("Check EMAIL_PASS:", process.env.EMAIL_PASS ? "Đã nhận" : "Chưa nhận");
   const transporter = nodemailer.createTransport({
     service: "gmail",
     auth: {
