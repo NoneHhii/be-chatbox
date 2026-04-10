@@ -5,7 +5,7 @@ const userModel = require("../models/userModel");
 const pool = require("../config/db");
 const {uploadFile} = require('../services/file.service');
 
-const sendOTP = require('../utils/mailer');
+const {sendOTP} = require('../utils/mailer');
 
 // API 1: Gửi OTP
 exports.sendRegistrationOTP = async (req, res) => {
