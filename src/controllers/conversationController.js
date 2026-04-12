@@ -32,7 +32,21 @@ exports.createConversation = async (req, res) => {
 exports.getConversations = async (req, res) => {
     try {
         const result = await pool.query(
-            "SELECT * FROM Conversation"
+            `SELECT DISTINCT ON (c.conversation_id) 
+                c.conversation_id, 
+                c.name, 
+                c.type, 
+                c.avatar, 
+                m.CONTENT AS last_message, 
+                m.create_at AS last_time_message, 
+                m.sender_id AS last_sender_id, 
+                a.username AS last_sender_name  
+            FROM conversation c 
+            JOIN conversation_member cm ON cm.conversation_id = c.conversation_id 
+            LEFT JOIN message m ON m.conversation_id = c.conversation_id 
+            LEFT JOIN account a ON m.sender_id = a.user_id 
+            WHERE cm.user_id = 'cc478484-3f21-4728-922a-801108d766cf' 
+            ORDER BY c.conversation_id, m.create_at DESC`
         );
 
         res.json(result.rows);
@@ -60,8 +74,8 @@ exports.addMember = async(req,res)=>{
 
 
 exports.getOrCreateConversation = async (req, res) => {
-    const senderId = req.user.d;
-    const { receiverId } = req.body;
+    const senderId = req.user.id;
+    const { receiverId, name, avatar } = req.body;
 
     if (!receiverId) return res.status(400).json("Thiếu receiverId");
 
@@ -70,9 +84,9 @@ exports.getOrCreateConversation = async (req, res) => {
         await client.query('BEGIN');
 
         const findQuery = `
-            SELECT cm1.conversation_id 
-            FROM ConversationMember cm1 
-            JOIN ConversationMember cm2 ON cm1.conversation_id = cm2.conversation_id 
+            SELECT c.* 
+            FROM conversation_member cm1 
+            JOIN conversation_member cm2 ON cm1.conversation_id = cm2.conversation_id 
             JOIN Conversation c ON cm1.conversation_id = c.conversation_id 
             WHERE cm1.user_id = $1 
               AND cm2.user_id = $2 
@@ -85,25 +99,31 @@ exports.getOrCreateConversation = async (req, res) => {
         if (existing.rows.length > 0) {
             // ĐÃ CÓ: Trả về ID cũ luôn
             await client.query('COMMIT');
-            return res.json({ conversation_id: existing.rows[0].conversation_id });
+            return res.json( existing.rows[0] );
         }
 
         // CHƯA CÓ: Tiến hành tạo mới
         const newConvId = uuidv4();
 
         // 2. Tạo Conversation mới
-        await client.query(
-            `INSERT INTO Conversation (conversation_id, name, type, create_by, create_at, avatar) VALUES ($1, null, 'private', $3, NOW(), null)`,
-            [newConvId]
+        const createConvQuery = `
+            INSERT INTO Conversation (conversation_id, name, type, create_by, create_at, avatar) 
+            VALUES ($1, $2, 'private', $3, NOW(), $4) 
+            RETURNING *;
+        `;
+
+        const newConvResult =await client.query(
+            createConvQuery,
+            [newConvId, name, senderId, avatar]
         );
 
         // 3. Thêm cả 2 vào Member (Dùng lặp hoặc 2 câu INSERT)
-        const addMemberQuery = `INSERT INTO Conversation_member (id, conversation_id, user_id, role, join_at) VALUES ($1, $2, $3, $4, $5)`;
-        await client.query([newConvId, addMemberQuery, senderId, 'member', NOW()]);
-        await client.query([newConvId, addMemberQuery, receiverId, 'member', NOW()]);
+        const addMemberQuery = `INSERT INTO Conversation_member (id, conversation_id, user_id, role, join_at) VALUES ($1, $2, $3, $4, NOW())`;
+        await client.query(addMemberQuery, [uuidv4(), newConvId, senderId, 'member']);
+        await client.query(addMemberQuery, [uuidv4(), newConvId, receiverId, 'member']);
 
         await client.query('COMMIT');
-        res.status(201).json({ conversation_id: newConvId });
+        res.status(201).json(newConvResult.rows[0]);
 
     } catch (error) {
         await client.query('ROLLBACK');

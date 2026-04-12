@@ -17,7 +17,7 @@ app.use(cors());
 app.use(express.json());
 
 app.use("/api/auth", authRoutes);
-app.use("/api/message", messageRoutes);
+app.use("/api/messages", messageRoutes);
 app.use("/api/friends", friendRoutes);
 app.use("/api/conversations", conversationRoutes);
 
@@ -27,6 +27,8 @@ const io = new Server(server, {
     cors: {origin: "*"}
 
 });
+
+app.set('socketio', io);
 
 require("./src/websocket/notification")(io);
 require("./src/websocket/chatSocket")(io);

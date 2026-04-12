@@ -7,13 +7,14 @@ exports.sendMessage = async (req, res) => {
     const message_id = uuidv4();
 
     try {
+        const io = req.app.get("socketio");
         await pool.query('BEGIN'); // Dùng Transaction để đảm bảo lưu cả Message và Attachment
 
         // 1. Lưu tin nhắn vào bảng Message
         // Lưu ý: message_type có thể là 'image', 'file', 'text'... tùy thuộc vào dữ liệu gửi lên
         const messageResult = await pool.query(
-            `INSERT INTO Message (message_id, conversation_id, sender_id, content, message_type)
-             VALUES ($1, $2, $3, $4, $5)
+            `INSERT INTO Message (message_id, conversation_id, sender_id, content, message_type, is_delete, create_at)
+             VALUES ($1, $2, $3, $4, $5, false, NOW())
              RETURNING *`,
             [message_id, conversation_id, sender_id, content, message_type]
         );
@@ -38,7 +39,9 @@ exports.sendMessage = async (req, res) => {
         await pool.query('COMMIT');
 
         // 3. (Tùy chọn) Bắn Socket.io tại đây để người nhận thấy tin nhắn ngay lập tức
-        // io.to(conversation_id).emit('new_message', newMessage);
+        if(io) {
+            io.to(conversation_id).emit('new_message', newMessage);
+        }
 
         res.status(201).json(newMessage);
 
