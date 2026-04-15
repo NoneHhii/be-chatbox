@@ -1,6 +1,7 @@
 const router = require("express").Router();
 const auth  = require("../middleware/authMiddleware");
 const conversationController = require("../controllers/conversationController")
+const upload = require("../middleware/uploadMiddleware");
 
 router.get("/", auth, conversationController.getConversations);
 router.post("/", auth, conversationController.createConversation);

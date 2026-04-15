@@ -30,25 +30,41 @@ exports.createConversation = async (req, res) => {
 }
 
 exports.getConversations = async (req, res) => {
+    console.log("conver", req.user.id);
+    
     try {
-        const result = await pool.query(
-            `SELECT DISTINCT ON (c.conversation_id) 
+        const result = await pool.query(`
+            SELECT DISTINCT ON (c.conversation_id) 
                 c.conversation_id, 
-                c.name, 
+                CASE 
+                    WHEN c.type = 'private' THEN a.username 
+                    ELSE c.name 
+                END AS name, 
                 c.type, 
-                c.avatar, 
-                m.CONTENT AS last_message, 
+                CASE 
+                    WHEN c.type = 'private' THEN a.avatar 
+                    ELSE c.avatar 
+                END AS avatar, 
+                CASE 
+                    WHEN m.message_type = 'image' THEN '[Hình ảnh]' 
+                    ELSE m.content 
+                END AS last_message, 
                 m.create_at AS last_time_message, 
-                m.sender_id AS last_sender_id, 
-                a.username AS last_sender_name  
+                m.sender_id AS last_sender_id,  
+                a.username AS last_sender_name, 
+                a.user_id AS friend_id 
             FROM conversation c 
             JOIN conversation_member cm ON cm.conversation_id = c.conversation_id 
+            LEFT JOIN conversation_member cm2 ON cm2.conversation_id = c.conversation_id AND cm2.user_id != cm.user_id 
+            LEFT JOIN account a ON a.user_id = cm2.user_id 
             LEFT JOIN message m ON m.conversation_id = c.conversation_id 
-            LEFT JOIN account a ON m.sender_id = a.user_id 
-            WHERE cm.user_id = 'cc478484-3f21-4728-922a-801108d766cf' 
-            ORDER BY c.conversation_id, m.create_at DESC`
+            WHERE cm.user_id = $1 
+            ORDER BY c.conversation_id, m.create_at DESC
+            `,
+            [req.user.id]
         );
 
+        // 'cc478484-3f21-4728-922a-801108d766cf' 
         res.json(result.rows);
     } catch (error) {
         console.log(error);
@@ -84,14 +100,24 @@ exports.getOrCreateConversation = async (req, res) => {
         await client.query('BEGIN');
 
         const findQuery = `
-            SELECT c.* 
-            FROM conversation_member cm1 
-            JOIN conversation_member cm2 ON cm1.conversation_id = cm2.conversation_id 
-            JOIN Conversation c ON cm1.conversation_id = c.conversation_id 
-            WHERE cm1.user_id = $1 
-              AND cm2.user_id = $2 
-              AND c.type = 'private' 
-            LIMIT 1;
+            SELECT DISTINCT ON (c.conversation_id) 
+                c.conversation_id, 
+                a.username AS name, 
+                c.type, 
+                a.avatar AS avatar, 
+                m.content AS last_message, 
+                m.create_at AS last_time_message, 
+                m.sender_id AS last_sender_id,  
+                a.username AS last_sender_name 
+            FROM conversation c 
+            JOIN conversation_member cm ON cm.conversation_id = c.conversation_id 
+            JOIN conversation_member cm2 ON cm2.conversation_id = c.conversation_id 
+            JOIN account a ON a.user_id = cm.user_id 
+            LEFT JOIN message m ON m.conversation_id = c.conversation_id 
+            WHERE cm.user_id = $1 
+                AND cm2.user_id = $2
+                AND c.type = 'private' 
+            ORDER BY c.conversation_id, m.create_at DESC
         `;
         
         const existing = await client.query(findQuery, [senderId, receiverId]);

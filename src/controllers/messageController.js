@@ -1,92 +1,109 @@
 const pool = require("../config/db");
 const { v4: uuidv4 } = require("uuid");
+const {uploadFile} = require('../services/file.service');
 
 exports.sendMessage = async (req, res) => {
     const { conversation_id, content, message_type = 'text' } = req.body;
     const sender_id = req.user.id;
-    const message_id = uuidv4();
+    
+    const currentTime = new Date();
+    const client = await pool.connect();
 
     try {
         const io = req.app.get("socketio");
-        await pool.query('BEGIN'); // Dùng Transaction để đảm bảo lưu cả Message và Attachment
+        await client.query('BEGIN');
+        const sentMessages = []; // Dùng Transaction để đảm bảo lưu cả Message và Attachment
 
-        // 1. Lưu tin nhắn vào bảng Message
-        // Lưu ý: message_type có thể là 'image', 'file', 'text'... tùy thuộc vào dữ liệu gửi lên
-        const messageResult = await pool.query(
-            `INSERT INTO Message (message_id, conversation_id, sender_id, content, message_type, is_delete, create_at)
-             VALUES ($1, $2, $3, $4, $5, false, NOW())
-             RETURNING *`,
-            [message_id, conversation_id, sender_id, content, message_type]
-        );
+        if(req.files && req.files.length > 0 ) {
 
-        const newMessage = messageResult.rows[0];
+            const uploadPromise = req.files.map(file => uploadFile(file));
+            const fileUrls = await Promise.all(uploadPromise);
+            for(let i = 0; i < req.files.length; i++) {
+                const file = req.files[i];
+                const message_id = uuidv4();
+                const file_url = fileUrls[i];
 
-        // 2. Nếu có file đính kèm (Xử lý qua Multer + S3 trước đó)
-        if (req.file) {
-            const attachment_id = uuidv4();
-            const file_url = req.file.location; // URL từ S3 sau khi upload
-            
-            await pool.query(
-                `INSERT INTO Attachment (attachment_id, message_id, file_url, file_type, file_size)
-                 VALUES ($1, $2, $3, $4, $5)`,
-                [attachment_id, message_id, file_url, req.file.mimetype, req.file.size]
+                const messageResult = await client.query(
+                    `INSERT INTO Message (message_id, conversation_id, sender_id, content, message_type, is_delete, create_at)
+                    VALUES ($1, $2, $3, $4, $5, false, $6)
+                    RETURNING *`,
+                    [message_id, conversation_id, sender_id, file.originalname, message_type, currentTime]
+                );
+
+                const newMessage = messageResult.rows[0];
+                newMessage.file_url = file_url;
+
+                await client.query(
+                    `INSERT INTO Attachment (attachment_id, message_id, file_url, file_type, file_size)
+                    VALUES ($1, $2, $3, $4, $5)`,
+                    [uuidv4(), message_id, file_url, file.mimetype, file.size]
+                );
+
+                sentMessages.push(newMessage);
+            }
+            if (io) io.to(conversation_id).emit('new_messages_batch', sentMessages);
+        } else {
+            // 1. Lưu tin nhắn vào bảng Message
+            // Lưu ý: message_type có thể là 'image', 'file', 'text'... tùy thuộc vào dữ liệu gửi lên
+            const messageResult = await client.query(
+                `INSERT INTO Message (message_id, conversation_id, sender_id, content, message_type, is_delete, create_at)
+                VALUES ($1, $2, $3, $4, $5, false, $6)
+                RETURNING *`,
+                [uuidv4(), conversation_id, sender_id, content, message_type, currentTime]
             );
-            
-            // Gắn thêm thông tin file vào object trả về để Frontend hiển thị luôn
-            newMessage.attachment = { file_url, file_type: req.file.mimetype };
+
+            sentMessages.push(messageResult.rows[0]);
+            if(io) io.to(conversation_id).emit('new_message', messageResult.rows[0]);
         }
 
-        await pool.query('COMMIT');
+        await client.query('COMMIT');
 
-        // 3. (Tùy chọn) Bắn Socket.io tại đây để người nhận thấy tin nhắn ngay lập tức
-        if(io) {
-            io.to(conversation_id).emit('new_message', newMessage);
-        }
-
-        res.status(201).json(newMessage);
+        res.status(201).json(sentMessages);
 
     } catch (err) {
-        await pool.query('ROLLBACK');
+        await client.query('ROLLBACK');
         console.error("Lỗi gửi tin nhắn:", err);
         res.status(500).json({ error: "Không thể gửi tin nhắn" });
+    } finally {
+        client.release();
     }
 };
 
 exports.getMessages = async (req, res) => {
 
- const { convId } = req.params;
+    const { convId } = req.params;
 
- const limit = parseInt(req.query.limit) || 20;
+    const limit = parseInt(req.query.limit) || 20;
 
- const cursor = req.query.cursor;
+    const cursor = req.query.cursor;
 
- let query = `
- SELECT *
- FROM Message
- WHERE conversation_id = $1
- `;
+    let query = `
+        SELECT m.*, a.file_url, a.file_size FROM public.message m
+        LEFT JOIN public.attachment a ON a.message_id = m.message_id
+        WHERE m.conversation_id = $1
+    `;
 
- const values = [convId];
+    const values = [convId];
 
- if (cursor) {
-   query += ` AND create_at < $2`;
-   values.push(cursor);
- }
+    if (cursor) {
+        query += ` AND create_at < $2`;
+        values.push(cursor);
+    }
 
- query += `
- ORDER BY create_at DESC
- LIMIT ${limit}
- `;
+    query += `
+        ORDER BY create_at 
+        LIMIT ${limit}
+    `;
 
- const result = await pool.query(query, values);
+    const result = await pool.query(query, values);
 
- res.json({
-   messages: result.rows.reverse(),
-   nextCursor:
-     result.rows.length
-       ? result.rows[result.rows.length - 1].create_at
-       : null
- });
+    res.json({
+    messages: result.rows.reverse(),
+    nextCursor:
+        result.rows.length
+        ? result.rows[result.rows.length - 1].create_at
+        : null
+    });
 
 };
 
