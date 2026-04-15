@@ -1,4 +1,5 @@
 const jwt = require('jsonwebtoken');
+require("dotenv").config();
 
 module.exports = (req, res, next) => {
     // console.log("Full Header nhận được:", req.headers.authorization);
@@ -15,7 +16,7 @@ module.exports = (req, res, next) => {
 
     try {
         // "SECRET" nên để trong file .env nhé (process.env.JWT_SECRET)
-        const decoded = jwt.verify(token, "SECRET");
+        const decoded = jwt.verify(token, process.env.JWT_SECRET);
         console.log("Nội dung Token giải mã được:", decoded);
 
         // Gán dữ liệu đã giải mã (thường là {id, email}) vào req.user

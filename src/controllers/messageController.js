@@ -2,6 +2,7 @@ const pool = require("../config/db");
 const { v4: uuidv4 } = require("uuid");
 const {uploadFile} = require('../services/file.service');
 
+
 exports.sendMessage = async (req, res) => {
     const { conversation_id, content, message_type = 'text' } = req.body;
     const sender_id = req.user.id;
@@ -86,12 +87,12 @@ exports.getMessages = async (req, res) => {
     const values = [convId];
 
     if (cursor) {
-        query += ` AND create_at < $2`;
+        query += ` AND m.create_at < $2`;
         values.push(cursor);
     }
 
     query += `
-        ORDER BY create_at 
+        ORDER BY create_at DESC 
         LIMIT ${limit}
     `;
 
