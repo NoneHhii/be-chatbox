@@ -1,3 +1,4 @@
+require("dotenv").config();
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const {v4: uuidv4} = require('uuid');
@@ -100,7 +101,7 @@ exports.login = async (req, res) => {
 
         const token = jwt.sign(
             {id: user.user_id, email: user.email},
-            "SECRET" || "fallback_secret",
+            process.env.JWT_SECRET || "fallback_secret",
             {expiresIn: '7d'}
         );
 
