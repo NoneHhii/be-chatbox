@@ -1,74 +1,316 @@
+// src/websocket/chatSocket.js
+
+const jwt = require("jsonwebtoken");
 const pool = require("../config/db");
 
 module.exports = (io) => {
-  io.on("connection", async (socket) => {
-    console.log("User connected:", socket.id);
-
-    // 1. Khi User báo danh Online
-    socket.on("user_online", async (userId) => {
-      socket.userId = userId;
-      socket.join(userId); // Join vào phòng cá nhân (để nhận notify riêng)
-
-      await pool.query(
-        `UPDATE Account SET is_online=true WHERE user_id=$1`,
-        [userId]
-      );
-
-      // Báo cho mọi người biết mình vừa online
-      io.emit("user_status", { userId, status: "online" });
-    });
-
-    // 2. QUAN TRỌNG: Vào phòng chat cụ thể
-    socket.on("join_conversation", (conversationId) => {
-      socket.join(conversationId);
-      console.log(`User ${socket.userId} đã vào phòng chat: ${conversationId}`);
-    });
-
-    // 3. Rời phòng chat
-    socket.on("leave_conversation", (conversationId) => {
-      socket.leave(conversationId);
-      console.log(`User ${socket.userId} đã rời phòng: ${conversationId}`);
-    });
-
-    // 4. Xử lý Disconnect
-    socket.on("disconnect", async () => {
-      if (socket.userId) {
-        // Lưu ý: Thực tế nên check xem còn socket nào khác của User này online không
-        // Nhưng đồ án thì Khoa cứ làm thế này cho đơn giản:
-        await pool.query(
-          `UPDATE Account SET is_online=false, last_seen=NOW() WHERE user_id=$1`,
-          [socket.userId]
+  /* ===================================
+     AUTH SOCKET
+  =================================== */
+  io.use((socket, next) => {
+    try {
+      const token =
+        socket.handshake.auth?.token ||
+        socket.handshake.headers?.authorization?.replace(
+          "Bearer ",
+          ""
         );
 
-        io.emit("user_status", {
-          userId: socket.userId,
-          status: "offline"
-        });
+      if (!token) {
+        return next(
+          new Error("Unauthorized")
+        );
       }
-      console.log("User disconnected:", socket.id);
-    });
 
-    // 5. Typing - Dùng socket.to() để gửi cho người kia (không gửi cho chính mình)
-    socket.on("typing_start", ({ conversationId, userId }) => {
-      socket.to(conversationId).emit("typing_start", { userId, conversationId });
-    });
+      const decoded = jwt.verify(
+        token,
+        process.env.JWT_SECRET ||
+          "SECRET"
+      );
 
-    socket.on("typing_stop", ({ conversationId, userId }) => {
-      socket.to(conversationId).emit("typing_stop", { userId, conversationId });
-    });
+      socket.userId = decoded.id;
 
-    // 6. Call Signalling (Nên dùng Room hoặc UserId để gửi chính xác hơn)
-    socket.on("call_user", (data) => {
-      // Gửi đến UserId của người nhận thay vì socketId (ổn định hơn)
-      io.to(data.targetUserId).emit("incoming_call", data);
-    });
-
-    socket.on("answer_call", (data) => {
-      io.to(data.callerId).emit("call_answered", data);
-    });
-
-    socket.on("end_call", (data) => {
-      io.to(data.conversationId).emit("call_ended");
-    });
+      next();
+    } catch (error) {
+      next(
+        new Error("Invalid token")
+      );
+    }
   });
+
+  /* ===================================
+     CONNECTION
+  =================================== */
+  io.on(
+    "connection",
+    async (socket) => {
+      const userId =
+        socket.userId;
+
+      console.log(
+        "Connected:",
+        userId,
+        socket.id
+      );
+
+      try {
+        /* room private */
+        socket.join(userId);
+
+        /* lưu socket */
+        await pool.query(
+          `
+          INSERT INTO user_socket(
+            id,
+            user_id,
+            socket_id
+          )
+          VALUES(
+            gen_random_uuid(),
+            $1,
+            $2
+          )
+          `,
+          [userId, socket.id]
+        );
+
+        /* online */
+        await pool.query(
+          `
+          UPDATE account
+          SET is_online=true
+          WHERE user_id=$1
+          `,
+          [userId]
+        );
+
+        io.emit(
+          "user_status",
+          {
+            userId,
+            status:
+              "online",
+          }
+        );
+      } catch (error) {
+        console.log(error);
+      }
+
+      /* ===================================
+         JOIN ROOM CHAT
+      =================================== */
+      socket.on(
+        "join_conversation",
+        (
+          conversationId
+        ) => {
+          socket.join(
+            conversationId
+          );
+
+          console.log(
+            `User ${userId} joined ${conversationId}`
+          );
+        }
+      );
+
+      socket.on(
+        "leave_conversation",
+        (
+          conversationId
+        ) => {
+          socket.leave(
+            conversationId
+          );
+
+          console.log(
+            `User ${userId} left ${conversationId}`
+          );
+        }
+      );
+
+      /* ===================================
+         TYPING
+      =================================== */
+      socket.on(
+        "typing_start",
+        ({
+          conversationId,
+        }) => {
+          socket
+            .to(
+              conversationId
+            )
+            .emit(
+              "typing_start",
+              {
+                userId,
+              }
+            );
+        }
+      );
+
+      socket.on(
+        "typing_stop",
+        ({
+          conversationId,
+        }) => {
+          socket
+            .to(
+              conversationId
+            )
+            .emit(
+              "typing_stop",
+              {
+                userId,
+              }
+            );
+        }
+      );
+
+      /* ===================================
+         SEEN MESSAGE
+      =================================== */
+      socket.on(
+        "seen_message",
+        ({
+          messageId,
+          conversationId,
+        }) => {
+          socket
+            .to(
+              conversationId
+            )
+            .emit(
+              "message_seen",
+              {
+                messageId,
+                userId,
+              }
+            );
+        }
+      );
+
+      /* ===================================
+         CALLING
+      =================================== */
+
+      // caller -> target
+      socket.on(
+        "call_user",
+        (data) => {
+          io.to(
+            data.targetUserId
+          ).emit(
+            "incoming_call",
+            {
+              ...data,
+              callerId:
+                userId,
+            }
+          );
+        }
+      );
+
+      // target answer
+      socket.on(
+        "answer_call",
+        (data) => {
+          io.to(
+            data.callerId
+          ).emit(
+            "call_answered",
+            data
+          );
+        }
+      );
+
+      // reject
+      socket.on(
+        "reject_call",
+        (data) => {
+          io.to(
+            data.callerId
+          ).emit(
+            "call_rejected"
+          );
+        }
+      );
+
+      // end call
+      socket.on(
+        "end_call",
+        (data) => {
+          io.to(
+            data
+              .conversationId
+          ).emit(
+            "call_ended"
+          );
+        }
+      );
+
+      /* ===================================
+         DISCONNECT
+      =================================== */
+      socket.on(
+        "disconnect",
+        async () => {
+          console.log(
+            "Disconnect:",
+            userId,
+            socket.id
+          );
+
+          try {
+            await pool.query(
+              `
+              DELETE FROM user_socket
+              WHERE socket_id=$1
+              `,
+              [socket.id]
+            );
+
+            const remain =
+              await pool.query(
+                `
+                SELECT id
+                FROM user_socket
+                WHERE user_id=$1
+                `,
+                [userId]
+              );
+
+            /* còn thiết bị khác */
+            if (
+              remain.rows
+                .length === 0
+            ) {
+              await pool.query(
+                `
+                UPDATE account
+                SET
+                  is_online=false,
+                  last_seen=NOW()
+                WHERE user_id=$1
+                `,
+                [userId]
+              );
+
+              io.emit(
+                "user_status",
+                {
+                  userId,
+                  status:
+                    "offline",
+                }
+              );
+            }
+          } catch (error) {
+            console.log(error);
+          }
+        }
+      );
+    }
+  );
 };
