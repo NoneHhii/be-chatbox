@@ -194,6 +194,51 @@ exports.uploadFile = async (req, res) => {
     });
 };
 
+exports.recallMessage = async(req, res) => {
+    const {message_id} = req.body;
+    const userId = req.user.id;
+    const io = req.app.get('socketio');
+
+    try {
+        const result = await pool.query(
+            `
+                UPDATE message SET is_recalled = true 
+                WHERE message_id = $1 AND sender_id = $2 RETURNING * 
+            `,
+            [message_id, userId]
+        );
+
+        if(result.rowCount === 0) res.status(403).json("Thu hồi lỗi");
+
+        const updateMsg = result.rows[0];
+        if(io) io.to(updateMsg.conversation_id).emit("message_recalled", {message_id});
+
+        res.json({status: "success", message_id});
+    } catch (error) {
+        res.status(500).json(error.message);
+    }
+};
+
+exports.deleteMessage = async(req, res) => {
+    const {messageId} = req.body;
+    const userId = res.user.id;
+    const io = req.app.get("socketio");
+
+    try {
+        const result = await pool.query(`
+            UPDATE message SET is_delete = TRUE 
+            WHERE message_id = $1 AND sender_id = $2 RETURNING *       
+        `, [messageId, userId]);
+
+        if(result.rowCount === 0) res.status(403).json("lỗi xóa tin nhắn");
+
+        const deleteMsg = result.rows[0];
+        if(io) io.to(deleteMsg.conversation_id).emit("delete message", {messageId});
+        res.json({status: "success", message_id});
+    } catch (error) {
+        res.status(500).json(error.message);
+    }
+}
 // exports.handleUpload = async (req, res) => {
 //     try {
 //         // Kiểm tra xem có file nào được gửi lên không
