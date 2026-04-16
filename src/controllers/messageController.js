@@ -99,7 +99,7 @@ exports.getMessages = async (req, res) => {
     const result = await pool.query(query, values);
 
     res.json({
-    messages: result.rows.reverse(),
+    messages: result.rows,
     nextCursor:
         result.rows.length
         ? result.rows[result.rows.length - 1].create_at
