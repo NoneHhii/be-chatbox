@@ -19,6 +19,8 @@ const FILE_TYPE_MATCH = [
 
     // Documents
     "application/pdf",
+    "text/plain",
+    "audio/m4a",
     "application/msword", // .doc
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document", // .docx
     "application/vnd.ms-powerpoint", // .ppt
