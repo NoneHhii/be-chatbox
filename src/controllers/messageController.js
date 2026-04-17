@@ -4,22 +4,28 @@ const {uploadFile} = require('../services/file.service');
 
 
 exports.sendMessage = async (req, res) => {
+    // Ép kiểu forwardedUrls về mảng ngay từ đầu
+    let forwardedUrls = req.body.fileUrls;
+    if (forwardedUrls && !Array.isArray(forwardedUrls)) {
+        forwardedUrls = [forwardedUrls];
+    }
+
     const { conversation_id, content, message_type = 'text' } = req.body;
     const sender_id = req.user.id;
-    
     const currentTime = new Date();
     const client = await pool.connect();
 
     try {
         const io = req.app.get("socketio");
         await client.query('BEGIN');
-        const sentMessages = []; // Dùng Transaction để đảm bảo lưu cả Message và Attachment
+        const sentMessages = [];
 
-        if(req.files && req.files.length > 0 ) {
-
+        // TRƯỜNG HỢP 1: GỬI FILE MỚI (UPLOAD S3)
+        if (req.files && req.files.length > 0) {
             const uploadPromise = req.files.map(file => uploadFile(file));
             const fileUrls = await Promise.all(uploadPromise);
-            for(let i = 0; i < req.files.length; i++) {
+
+            for (let i = 0; i < req.files.length; i++) {
                 const file = req.files[i];
                 const message_id = uuidv4();
                 const file_url = fileUrls[i];
@@ -28,8 +34,7 @@ exports.sendMessage = async (req, res) => {
 
                 const messageResult = await client.query(
                     `INSERT INTO Message (message_id, conversation_id, sender_id, content, message_type, is_delete, create_at)
-                    VALUES ($1, $2, $3, $4, $5, false, $6)
-                    RETURNING *`,
+                    VALUES ($1, $2, $3, $4, $5, false, $6) RETURNING *`,
                     [message_id, conversation_id, sender_id, finalContent, message_type, currentTime]
                 );
 
@@ -44,23 +49,48 @@ exports.sendMessage = async (req, res) => {
 
                 sentMessages.push(newMessage);
             }
+            // Emit cho cả cụm file
             if (io) io.to(conversation_id).emit('new_messages_batch', sentMessages);
-        } else {
-            // 1. Lưu tin nhắn vào bảng Message
-            // Lưu ý: message_type có thể là 'image', 'file', 'text'... tùy thuộc vào dữ liệu gửi lên
+        } 
+        
+        // TRƯỜNG HỢP 2: CHUYỂN TIẾP (DÙNG LINK S3 CŨ)
+        else if (forwardedUrls && forwardedUrls.length > 0) {
+            for (const url of forwardedUrls) {
+                const message_id = uuidv4();
+                const messageResult = await client.query(
+                    `INSERT INTO Message (message_id, conversation_id, sender_id, content, message_type, is_delete, create_at)
+                    VALUES ($1, $2, $3, $4, $5, false, $6) RETURNING *`,
+                    [message_id, conversation_id, sender_id, content, message_type, currentTime]
+                );
+
+                await client.query(
+                    `INSERT INTO Attachment (attachment_id, message_id, file_url, file_type, file_size)
+                    VALUES ($1, $2, $3, $4, $5)`,
+                    [uuidv4(), message_id, url, 'forwarded', 0]
+                );
+
+                const newMessage = messageResult.rows[0];
+                newMessage.file_url = url;
+                sentMessages.push(newMessage);
+            }
+            // QUAN TRỌNG: Phải emit socket ở đây để người nhận thấy tin nhắn chuyển tiếp ngay
+            if (io) io.to(conversation_id).emit('new_messages_batch', sentMessages);
+        }
+
+        // TRƯỜNG HỢP 3: TIN NHẮN VĂN BẢN (TEXT)
+        else {
             const messageResult = await client.query(
                 `INSERT INTO Message (message_id, conversation_id, sender_id, content, message_type, is_delete, create_at)
-                VALUES ($1, $2, $3, $4, $5, false, $6)
-                RETURNING *`,
+                VALUES ($1, $2, $3, $4, $5, false, $6) RETURNING *`,
                 [uuidv4(), conversation_id, sender_id, content, message_type, currentTime]
             );
 
-            sentMessages.push(messageResult.rows[0]);
-            if(io) io.to(conversation_id).emit('new_message', messageResult.rows[0]);
+            const newMessage = messageResult.rows[0];
+            sentMessages.push(newMessage);
+            if (io) io.to(conversation_id).emit('new_message', newMessage);
         }
 
         await client.query('COMMIT');
-
         res.status(201).json(sentMessages);
 
     } catch (err) {
