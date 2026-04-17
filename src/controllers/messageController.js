@@ -225,7 +225,7 @@ exports.recallMessage = async(req, res) => {
 };
 
 exports.deleteMessageForMe = async (req, res) => {
-    const { messageId } = req.params;
+    const { message_id } = req.params;
     const userId = req.user.id;
 
     try {
@@ -233,7 +233,7 @@ exports.deleteMessageForMe = async (req, res) => {
             `INSERT INTO Message_Deleted_By_User (message_id, user_id) 
              VALUES ($1, $2) 
              ON CONFLICT DO NOTHING`, 
-            [messageId, userId]
+            [message_id, userId]
         );
         
         res.json({ status: "success", message: "Đã ẩn tin nhắn với bạn" });
