@@ -37,11 +37,6 @@ module.exports = (io) => {
         console.error("Lỗi tự động set online:", error.message);
     }
 
-    // Các sự kiện khác giữ nguyên, không cần check undefined nữa
-    socket.on("join_conversation", (conversationId) => {
-      socket.join(conversationId);
-    });
-
     console.log("Socket connected:", socket.id);
 
     // 1. Khi User báo danh Online
