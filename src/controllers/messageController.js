@@ -10,7 +10,7 @@ exports.sendMessage = async (req, res) => {
         forwardedUrls = [forwardedUrls];
     }
 
-    const { conversation_id, content, message_type = 'text' } = req.body;
+    const { conversation_id, content, message_type = 'text', parent_id } = req.body;
     const sender_id = req.user.id;
     const currentTime = new Date();
     const client = await pool.connect();
@@ -33,12 +33,20 @@ exports.sendMessage = async (req, res) => {
                 const finalContent = message_type === 'voice' ? '[Tin nhắn thoại]' : file.originalname;
 
                 const messageResult = await client.query(
-                    `INSERT INTO Message (message_id, conversation_id, sender_id, content, message_type, is_delete, create_at)
+                    `INSERT INTO Message (message_id, conversation_id, sender_id, content, message_type, is_delete, create_at, parent_id)
                     VALUES ($1, $2, $3, $4, $5, false, $6) RETURNING *`,
-                    [message_id, conversation_id, sender_id, finalContent, message_type, currentTime]
+                    [message_id, conversation_id, sender_id, finalContent, message_type, currentTime, parent_id || null]
                 );
 
                 const newMessage = messageResult.rows[0];
+                if (parent_id) {
+            const parentMsg = await client.query(
+                `SELECT content, message_type FROM Message WHERE message_id = $1`, 
+                [parent_id]
+            );
+            // Gán vào object để Frontend dễ hiển thị
+            newMessage.reply_to_content = parentMsg.rows[0]?.content;
+        }
                 newMessage.file_url = file_url;
 
                 await client.query(
