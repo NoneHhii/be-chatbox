@@ -91,10 +91,8 @@ exports.getMessages = async (req, res) => {
         values.push(cursor);
     }
 
-    query += `
-        ORDER BY create_at DESC 
-        LIMIT ${limit}
-    `;
+    query += ` ORDER BY m.create_at DESC LIMIT $${values.length + 1}`;
+    values.push(limit);
 
     const result = await pool.query(query, values);
 
