@@ -225,7 +225,7 @@ exports.recallMessage = async(req, res) => {
 };
 
 exports.deleteMessageForMe = async (req, res) => {
-    const { message_id } = req.params;
+    const { message_id } = req.body;
     const userId = req.user.id;
 
     try {
