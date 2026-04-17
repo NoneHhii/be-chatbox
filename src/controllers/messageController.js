@@ -74,7 +74,7 @@ exports.getMessages = async (req, res) => {
 
     const { convId } = req.params;
 
-    const limit = parseInt(req.query.limit) || 20;
+    const {limit} = parseInt(req.query.limit) || 20;
 
     const cursor = req.query.cursor;
 
