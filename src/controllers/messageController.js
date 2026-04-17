@@ -24,11 +24,13 @@ exports.sendMessage = async (req, res) => {
                 const message_id = uuidv4();
                 const file_url = fileUrls[i];
 
+                const finalContent = message_type === 'voice' ? '[Tin nhắn thoại]' : file.originalname;
+
                 const messageResult = await client.query(
                     `INSERT INTO Message (message_id, conversation_id, sender_id, content, message_type, is_delete, create_at)
                     VALUES ($1, $2, $3, $4, $5, false, $6)
                     RETURNING *`,
-                    [message_id, conversation_id, sender_id, file.originalname, message_type, currentTime]
+                    [message_id, conversation_id, sender_id, finalContent, message_type, currentTime]
                 );
 
                 const newMessage = messageResult.rows[0];
@@ -77,6 +79,7 @@ exports.getMessages = async (req, res) => {
     const {limit} = parseInt(req.query.limit) || 20;
 
     const cursor = req.query.cursor;
+    const userId = req.user.id;
 
     let query = `
         SELECT m.*, a.file_url, a.file_size FROM public.message m
@@ -88,7 +91,7 @@ exports.getMessages = async (req, res) => {
         )
     `;
 
-    const values = [convId];
+    const values = [convId, userId];
 
     if (cursor) {
         query += ` AND m.create_at < $2`;
@@ -221,26 +224,23 @@ exports.recallMessage = async(req, res) => {
     }
 };
 
-exports.deleteMessage = async(req, res) => {
-    const {messageId} = req.body;
-    const userId = res.user.id;
-    const io = req.app.get("socketio");
+exports.deleteMessageForMe = async (req, res) => {
+    const { messageId } = req.params;
+    const userId = req.user.id;
 
     try {
-        const result = await pool.query(`
-            UPDATE message SET is_delete = TRUE 
-            WHERE message_id = $1 AND sender_id = $2 RETURNING *       
-        `, [messageId, userId]);
-
-        if(result.rowCount === 0) res.status(403).json("lỗi xóa tin nhắn");
-
-        const deleteMsg = result.rows[0];
-        if(io) io.to(deleteMsg.conversation_id).emit("delete message", {messageId});
-        res.json({status: "success", message_id});
-    } catch (error) {
-        res.status(500).json(error.message);
+        await pool.query(
+            `INSERT INTO Message_Deleted_By_User (message_id, user_id) 
+             VALUES ($1, $2) 
+             ON CONFLICT DO NOTHING`, 
+            [messageId, userId]
+        );
+        
+        res.json({ status: "success", message: "Đã ẩn tin nhắn với bạn" });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
     }
-}
+};
 // exports.handleUpload = async (req, res) => {
 //     try {
 //         // Kiểm tra xem có file nào được gửi lên không
