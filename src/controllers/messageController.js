@@ -66,9 +66,9 @@ exports.sendMessage = async (req, res) => {
             for (const url of forwardedUrls) {
                 const message_id = uuidv4();
                 const messageResult = await client.query(
-                    `INSERT INTO Message (message_id, conversation_id, sender_id, content, message_type, is_delete, create_at)
+                    `INSERT INTO Message (message_id, conversation_id, sender_id, content, message_type, is_delete, create_at, parent_id)
                     VALUES ($1, $2, $3, $4, $5, false, $6) RETURNING *`,
-                    [message_id, conversation_id, sender_id, content, message_type, currentTime]
+                    [message_id, conversation_id, sender_id, content, message_type, currentTime, parent_id || null]
                 );
 
                 await client.query(
@@ -88,9 +88,9 @@ exports.sendMessage = async (req, res) => {
         // TRƯỜNG HỢP 3: TIN NHẮN VĂN BẢN (TEXT)
         else {
             const messageResult = await client.query(
-                `INSERT INTO Message (message_id, conversation_id, sender_id, content, message_type, is_delete, create_at)
+                `INSERT INTO Message (message_id, conversation_id, sender_id, content, message_type, is_delete, create_at, parent_id)
                 VALUES ($1, $2, $3, $4, $5, false, $6) RETURNING *`,
-                [uuidv4(), conversation_id, sender_id, content, message_type, currentTime]
+                [uuidv4(), conversation_id, sender_id, content, message_type, currentTime, parent_id || null]
             );
 
             const newMessage = messageResult.rows[0];
