@@ -81,7 +81,11 @@ exports.getMessages = async (req, res) => {
     let query = `
         SELECT m.*, a.file_url, a.file_size FROM public.message m
         LEFT JOIN public.attachment a ON a.message_id = m.message_id
-        WHERE m.conversation_id = $1
+        WHERE m.conversation_id = $1 
+        AND NOT EXISTS (
+            SELECT 1 FROM Message_Deleted_By_User d 
+            WHERE d.message_id = m.message_id AND d.user_id = $2
+        )
     `;
 
     const values = [convId];
