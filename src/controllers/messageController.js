@@ -34,7 +34,7 @@ exports.sendMessage = async (req, res) => {
 
                 const messageResult = await client.query(
                     `INSERT INTO Message (message_id, conversation_id, sender_id, content, message_type, is_delete, create_at, parent_id)
-                    VALUES ($1, $2, $3, $4, $5, false, $6) RETURNING *`,
+                    VALUES ($1, $2, $3, $4, $5, false, $6, $7) RETURNING *`,
                     [message_id, conversation_id, sender_id, finalContent, message_type, currentTime, parent_id || null]
                 );
 
