@@ -7,6 +7,8 @@ router.post("/send", auth, upload.array('files', 10), msg.sendMessage);
 router.get("/:convId", auth, msg.getMessages);
 router.post("/recall", auth, msg.recallMessage);
 router.post("/delete", auth, msg.deleteMessageForMe);
+router.post("/pin", auth, msg.pinMessage);
+router.post("/unpin", auth, msg.unpinMessage);
 
 // router.post(
 //  "/upload",

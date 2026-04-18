@@ -89,7 +89,7 @@ exports.sendMessage = async (req, res) => {
         else {
             const messageResult = await client.query(
                 `INSERT INTO Message (message_id, conversation_id, sender_id, content, message_type, is_delete, create_at, parent_id)
-                VALUES ($1, $2, $3, $4, $5, false, $6) RETURNING *`,
+                VALUES ($1, $2, $3, $4, $5, false, $6, $7) RETURNING *`,
                 [uuidv4(), conversation_id, sender_id, content, message_type, currentTime, parent_id || null]
             );
 
@@ -279,6 +279,63 @@ exports.deleteMessageForMe = async (req, res) => {
         res.status(500).json({ error: err.message });
     }
 };
+
+exports.pinMessage = async (req, res) => {
+    const userId = req.user.id;
+    const {conversation_id, message_id} = req.body;
+    const currentTime = new Date();
+
+    try {
+        const io = req.app.get("socketio");
+
+        const result = await pool.query(`
+            INSERT INTO PinnedMessages (pinned_id, conversation_id, message_id, pinned_by, create_at) 
+            VALUES ($1, $2, $3, $4, $5) 
+            ON CONFLICT (conversation_id, message_id) 
+            DO NOTHING
+            RETURNING *
+        `, [uuidv4(), conversation_id, message_id, userId, currentTime]);
+
+        if (result.rows.length === 0) {
+            return res.status(400).json({ error: "Tin nhắn này đã được ghim rồi!" });
+        }
+        
+        const msgDetail = await pool.query(`SELECT content, message_type FROM Message WHERE message_id = $1`, [message_id]);
+        const pinnedData = {
+            ...result.rows[0],
+            content: msgDetail.rows[0]?.content,
+            message_type: msgDetail.rows[0]?.message_type
+        };
+        if(io) io.to(conversation_id).emit("pinned_message", {pinnedData});
+        res.json({ status: "success", data: pinnedData });
+    } catch (error) {
+        res.status(500).json(error.message);
+    }
+}
+
+exports.unpinMessage = async (req, res) => {
+    const {conversation_id, message_id} = req.body;
+
+    try {
+        const io = req.app.get("socketio");
+
+        const result = await pool.query(`
+            DELETE FROM PinnedMessages  
+            WHERE conversation_id = $1 AND message_id = $2 
+            RETURNING *
+        `, [conversation_id, message_id]);
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: "Không tìm thấy tin nhắn ghim này" });
+        }
+
+        const pinned = result.rows[0];
+        if(io) io.to(pinned.conversation_id).emit("unpinned_message", {message_id});
+        res.json({status: "success", message_id});
+    } catch (error) {
+        res.status(500).json(error.message);
+    }
+}
 // exports.handleUpload = async (req, res) => {
 //     try {
 //         // Kiểm tra xem có file nào được gửi lên không
