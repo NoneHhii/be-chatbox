@@ -30,7 +30,7 @@ exports.createConversation = async (req, res) => {
 }
 
 exports.getConversations = async (req, res) => {
-    console.log("conver", req.user.id);
+    // console.log("conver", req.user.id);
     
     try {
         const result = await pool.query(`
@@ -47,6 +47,7 @@ exports.getConversations = async (req, res) => {
                 END AS avatar, 
                 CASE 
                     WHEN m.message_type = 'image' THEN '[Hình ảnh]' 
+                    WHEN m.message_type = 'voice' THEN '[Tin nhắn thoại]' 
                     ELSE m.content 
                 END AS last_message, 
                 m.create_at AS last_time_message, 
@@ -91,41 +92,46 @@ exports.addMember = async(req,res)=>{
 
 exports.getOrCreateConversation = async (req, res) => {
     const senderId = req.user.id;
-    const { receiverId, name, avatar } = req.body;
+    const { receiverIds, name, avatar, type = 'private' } = req.body;
 
-    if (!receiverId) return res.status(400).json("Thiếu receiverId");
+    if (!receiverIds || !Array.isArray(receiverIds) || receiverIds.length === 0) {
+        return res.status(400).json("Thiếu danh sách người nhận (receiverIds)");
+    }
 
     const client = await pool.connect();
     try {
         await client.query('BEGIN');
 
-        const findQuery = `
-            SELECT DISTINCT ON (c.conversation_id) 
-                c.conversation_id, 
-                a.username AS name, 
-                c.type, 
-                a.avatar AS avatar, 
-                m.content AS last_message, 
-                m.create_at AS last_time_message, 
-                m.sender_id AS last_sender_id,  
-                a.username AS last_sender_name 
-            FROM conversation c 
-            JOIN conversation_member cm ON cm.conversation_id = c.conversation_id 
-            JOIN conversation_member cm2 ON cm2.conversation_id = c.conversation_id 
-            JOIN account a ON a.user_id = cm.user_id 
-            LEFT JOIN message m ON m.conversation_id = c.conversation_id 
-            WHERE cm.user_id = $1 
-                AND cm2.user_id = $2
-                AND c.type = 'private' 
-            ORDER BY c.conversation_id, m.create_at DESC
-        `;
-        
-        const existing = await client.query(findQuery, [senderId, receiverId]);
+        if(type === 'private' && receiverIds.length === 1) {
+            const receiverId = receiverIds[0];
+            const findQuery = `
+                SELECT DISTINCT ON (c.conversation_id) 
+                    c.conversation_id, 
+                    a.username AS name, 
+                    c.type, 
+                    a.avatar AS avatar, 
+                    m.content AS last_message, 
+                    m.create_at AS last_time_message, 
+                    m.sender_id AS last_sender_id,  
+                    a.username AS last_sender_name 
+                FROM conversation c 
+                JOIN conversation_member cm ON cm.conversation_id = c.conversation_id 
+                JOIN conversation_member cm2 ON cm2.conversation_id = c.conversation_id 
+                JOIN account a ON a.user_id = cm.user_id 
+                LEFT JOIN message m ON m.conversation_id = c.conversation_id 
+                WHERE cm.user_id = $1 
+                    AND cm2.user_id = $2
+                    AND c.type = 'private' 
+                ORDER BY c.conversation_id, m.create_at DESC
+            `;
 
-        if (existing.rows.length > 0) {
-            // ĐÃ CÓ: Trả về ID cũ luôn
-            await client.query('COMMIT');
-            return res.json( existing.rows[0] );
+            const existing = await client.query(findQuery, [senderId, receiverId]);
+
+            if (existing.rows.length > 0) {
+                // ĐÃ CÓ: Trả về ID cũ luôn
+                await client.query('COMMIT');
+                return res.json( existing.rows[0] );
+            }
         }
 
         // CHƯA CÓ: Tiến hành tạo mới
@@ -134,19 +140,22 @@ exports.getOrCreateConversation = async (req, res) => {
         // 2. Tạo Conversation mới
         const createConvQuery = `
             INSERT INTO Conversation (conversation_id, name, type, create_by, create_at, avatar) 
-            VALUES ($1, $2, 'private', $3, NOW(), $4) 
+            VALUES ($1, $2, $3, $4, NOW(), $5) 
             RETURNING *;
         `;
 
         const newConvResult =await client.query(
             createConvQuery,
-            [newConvId, name, senderId, avatar]
+            [newConvId, name || null, type, senderId, avatar || null]
         );
 
-        // 3. Thêm cả 2 vào Member (Dùng lặp hoặc 2 câu INSERT)
+        const allMemberIds = [... new Set([senderId, ...receiverIds])];
         const addMemberQuery = `INSERT INTO Conversation_member (id, conversation_id, user_id, role, join_at) VALUES ($1, $2, $3, $4, NOW())`;
-        await client.query(addMemberQuery, [uuidv4(), newConvId, senderId, 'member']);
-        await client.query(addMemberQuery, [uuidv4(), newConvId, receiverId, 'member']);
+        
+        for(const uID of allMemberIds) {
+            const role = (uID === senderId) ? 'admin' : 'member';
+            await client.query(addMemberQuery, [uuidv4(), newConvId, uID, role]);
+        }
 
         await client.query('COMMIT');
         res.status(201).json(newConvResult.rows[0]);

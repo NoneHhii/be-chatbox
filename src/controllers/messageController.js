@@ -40,12 +40,12 @@ exports.sendMessage = async (req, res) => {
 
                 const newMessage = messageResult.rows[0];
                 if (parent_id) {
-            const parentMsg = await client.query(
-                `SELECT content, message_type FROM Message WHERE message_id = $1`, 
-                [parent_id]
-            );
-            // Gán vào object để Frontend dễ hiển thị
-            newMessage.reply_to_content = parentMsg.rows[0]?.content;
+                    const parentMsg = await client.query(
+                        `SELECT content, message_type FROM Message WHERE message_id = $1`, 
+                        [parent_id]
+                );
+                // Gán vào object để Frontend dễ hiển thị
+                newMessage.reply_to_content = parentMsg.rows[0]?.content;
         }
                 newMessage.file_url = file_url;
 
@@ -120,12 +120,13 @@ exports.getMessages = async (req, res) => {
     const userId = req.user.id;
 
     let query = `
-        SELECT m.*, a.file_url, a.file_size FROM public.message m
-        LEFT JOIN public.attachment a ON a.message_id = m.message_id
+        SELECT m.*, a.file_url, a.file_size, u.username, u.avatar FROM public.message m 
+        LEFT JOIN public.attachment a ON a.message_id = m.message_id 
+        LEFT JOIN account u ON u.user_id = m.sender_id 
         WHERE m.conversation_id = $1 
-        AND NOT EXISTS (
+        AND NOT EXISTS ( 
             SELECT 1 FROM Message_Deleted_By_User d 
-            WHERE d.message_id = m.message_id AND d.user_id = $2
+            WHERE d.message_id = m.message_id AND d.user_id = $2  
         )
     `;
 
