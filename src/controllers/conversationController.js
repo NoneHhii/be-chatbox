@@ -114,6 +114,8 @@ exports.getOrCreateConversation = async (req, res) => {
 
   try {
     await client.query("BEGIN");
+    console.log("conver: ", converId);
+    
 
     /* ======================================
        1. OPEN EXISTING BY ID
@@ -400,4 +402,118 @@ exports.getOrCreateConversation = async (req, res) => {
   } finally {
     client.release();
   }
+};
+
+// 1. Cập nhật thông tin nhóm (Tên/Ảnh)
+exports.updateGroupInfo = async (req, res) => {
+    const { conversation_id, name, avatar } = req.body;
+    const userId = req.user.id;
+    const io = req.app.get("socketio");
+
+    try {
+        // Kiểm tra quyền Admin (Chỉ admin mới được đổi info nhóm)
+        const check = await pool.query(
+            "SELECT role FROM conversation_member WHERE conversation_id = $1 AND user_id = $2",
+            [conversation_id, userId]
+        );
+        if (check.rows[0]?.role !== 'admin') return res.status(403).json("Chỉ Admin mới có quyền này");
+
+        const result = await pool.query(
+            "UPDATE conversation SET name = COALESCE($1, name), avatar = COALESCE($2, avatar) WHERE conversation_id = $3 RETURNING *",
+            [name, avatar, conversation_id]
+        );
+
+        const updatedGroup = result.rows[0];
+
+        // SOCKET: Thông báo cho cả nhóm là thông tin đã thay đổi
+        if (io) {
+            io.to(conversation_id).emit("group_updated", {
+                conversation_id,
+                name: updatedGroup.name,
+                avatar: updatedGroup.avatar,
+                message: `Thông tin nhóm đã được cập nhật`
+            });
+        }
+
+        res.json(updatedGroup);
+    } catch (err) { res.status(500).json(err.message); }
+};
+
+// 2. Kick thành viên hoặc Rời nhóm
+exports.removeMember = async (req, res) => {
+    const { conversation_id, targetUserId } = req.body;
+    const requestUserId = req.user.id;
+    const io = req.app.get("socketio");
+
+    try {
+        // Nếu không phải tự rời nhóm thì phải check quyền Admin
+        if (requestUserId !== targetUserId) {
+            const check = await pool.query(
+                "SELECT role FROM conversation_member WHERE conversation_id = $1 AND user_id = $2",
+                [conversation_id, requestUserId]
+            );
+            if (check.rows[0]?.role !== 'admin') return res.status(403).json("Bạn không có quyền kick thành viên");
+        }
+
+        // Thực hiện xóa khỏi DB
+        await pool.query(
+            "DELETE FROM conversation_member WHERE conversation_id = $1 AND user_id = $2",
+            [conversation_id, targetUserId]
+        );
+
+        // SOCKET: 
+        if (io) {
+            // 1. Gửi cho người bị kick để họ tự thoát màn hình chat
+            io.to(targetUserId).emit("you_are_kicked", { conversation_id });
+            
+            // 2. Gửi cho những người còn lại trong nhóm biết có người vừa ra đi
+            io.to(conversation_id).emit("member_left", { 
+                conversation_id, 
+                userId: targetUserId,
+                isKicked: requestUserId !== targetUserId 
+            });
+        }
+
+        res.json({ status: "success", message: "Đã rời/xóa thành viên" });
+    } catch (err) { res.status(500).json(err.message); }
+};
+
+// 3. Chuyển quyền Admin
+exports.setAdmin = async (req, res) => {
+    const { conversation_id, targetUserId } = req.body;
+    const adminId = req.user.id;
+    const io = req.app.get("socketio");
+
+    try {
+        const check = await pool.query(
+            "SELECT role FROM conversation_member WHERE conversation_id = $1 AND user_id = $2",
+            [conversation_id, adminId]
+        );
+        if (check.rows[0]?.role !== 'admin') return res.status(403).json("Chỉ Admin mới có thể chỉ định Admin mới");
+
+        await pool.query(
+            "UPDATE conversation_member SET role = 'admin' WHERE conversation_id = $1 AND user_id = $2",
+            [conversation_id, targetUserId]
+        );
+
+        if (io) {
+            io.to(conversation_id).emit("new_admin_assigned", { conversation_id, newAdminId: targetUserId });
+        }
+
+        res.json("Đã chỉ định Admin mới thành công");
+    } catch (err) { res.status(500).json(err.message); }
+};
+
+exports.getMembers = async (req, res) => {
+    const { id } = req.params; // conversation_id
+    try {
+        const result = await pool.query(
+            `SELECT a.user_id, a.username, a.avatar, cm.role 
+             FROM conversation_member cm 
+             JOIN account a ON a.user_id = cm.user_id 
+             WHERE cm.conversation_id = $1`,
+            [id]
+        );
+        res.json(result.rows);
+    } catch (err) { res.status(500).json(err.message); }
 };

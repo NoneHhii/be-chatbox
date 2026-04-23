@@ -7,7 +7,11 @@ router.get("/", auth, conversationController.getConversations);
 router.post("/", auth, conversationController.createConversation);
 router.post("/merge", auth, conversationController.getOrCreateConversation);
 router.get("/:id", auth, conversationController.getConversations);
-router.post("/:id/add", auth, conversationController.addMember);
+router.post('/group/add-members', auth, conversationController.addMember);
+router.delete('/group/remove-member', auth, conversationController.removeMember);
+router.put('/group/info', auth, conversationController.updateGroupInfo);
+router.put('/group/set-admin', auth, conversationController.setAdmin);
+router.get('/:id/members', auth, conversationController.getMembers);
 // router.delete("/:id/member/:userId", auth, conversationController.removeMember);
 
 module.exports = router;
