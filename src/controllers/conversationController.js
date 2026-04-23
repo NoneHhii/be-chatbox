@@ -120,7 +120,7 @@ exports.getOrCreateConversation = async (req, res) => {
                 WHERE c.conversation_id = $1 AND cm.user_id = $2 
 				ORDER BY c.conversation_id, m.create_at DESC
             `;
-            const result = await client.query(checkIdQuery, [conversation_id, senderId]);
+            const result = await client.query(checkIdQuery, [converId, senderId]);
             if (result.rows.length > 0) {
                 await client.query('COMMIT');
                 return res.json(result.rows[0]);
