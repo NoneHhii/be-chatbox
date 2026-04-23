@@ -102,7 +102,7 @@ exports.getOrCreateConversation = async (req, res) => {
     try {
         await client.query('BEGIN');
 
-        if (conversation_id) {
+        if (converId) {
             const checkIdQuery = `
                 SELECT DISTINCT ON (c.conversation_id)
                     c.conversation_id,  
