@@ -91,105 +91,313 @@ exports.addMember = async(req,res)=>{
 
 
 exports.getOrCreateConversation = async (req, res) => {
-    const senderId = req.user.id;
-    const { receiverIds, name, avatar, type = 'private', converId } = req.body;
+  const senderId = req.user.id;
 
-    if (!receiverIds || !Array.isArray(receiverIds) || receiverIds.length === 0) {
-        return res.status(400).json("Thiếu danh sách người nhận (receiverIds)");
+  const {
+    receiverIds = [],
+    name,
+    avatar,
+    type = "private",
+    converId,
+  } = req.body;
+
+  if (
+    !Array.isArray(receiverIds) ||
+    receiverIds.length === 0
+  ) {
+    return res
+      .status(400)
+      .json("Thiếu receiverIds");
+  }
+
+  const client = await pool.connect();
+
+  try {
+    await client.query("BEGIN");
+
+    /* ======================================
+       1. OPEN EXISTING BY ID
+    ====================================== */
+    if (converId) {
+      const result = await client.query(
+        `
+        SELECT DISTINCT ON (c.conversation_id)
+          c.conversation_id,
+          c.name,
+          c.type,
+          c.avatar,
+
+          m.content AS last_message,
+          m.create_at AS last_time_message,
+          m.sender_id AS last_sender_id,
+          a.username AS last_sender_name
+
+        FROM conversation c
+
+        JOIN conversation_member cm
+          ON cm.conversation_id = c.conversation_id
+
+        LEFT JOIN message m
+          ON m.conversation_id = c.conversation_id
+
+        LEFT JOIN account a
+          ON a.user_id = m.sender_id
+
+        WHERE c.conversation_id = $1
+          AND cm.user_id = $2
+
+        ORDER BY c.conversation_id, m.create_at DESC
+        `,
+        [converId, senderId]
+      );
+
+      if (result.rows.length > 0) {
+        await client.query("COMMIT");
+        return res.json(result.rows[0]);
+      }
     }
 
-    const client = await pool.connect();
-    try {
-        await client.query('BEGIN');
+    /* ======================================
+       2. PRIVATE CHAT
+    ====================================== */
+    if (
+      type === "private" &&
+      receiverIds.length === 1
+    ) {
+      const receiverId =
+        receiverIds[0];
 
-        if (converId) {
-            const checkIdQuery = `
-                SELECT DISTINCT ON (c.conversation_id)
-                    c.conversation_id,  
-                    c.name, 
-                    c.type, 
-                    c.avatar, 
-                    m.content AS last_message, 
-                    m.create_at AS last_time_message, 
-                    m.sender_id AS last_sender_id,  
-                    a.username AS last_sender_name  
-                FROM conversation c 
-                JOIN conversation_member cm ON c.conversation_id = cm.conversation_id 
-                LEFT JOIN message m ON m.conversation_id = c.conversation_id 
-                LEFT JOIN account a ON a.user_id = m.sender_id 
-                WHERE c.conversation_id = $1 AND cm.user_id = $2 
-				ORDER BY c.conversation_id, m.create_at DESC
-            `;
-            const result = await client.query(checkIdQuery, [converId, senderId]);
-            if (result.rows.length > 0) {
-                await client.query('COMMIT');
-                return res.json(result.rows[0]);
-            }
-        }
+      const existing =
+        await client.query(
+          `
+          SELECT DISTINCT ON (c.conversation_id)
 
-        if(type === 'private' && receiverIds.length === 1) {
-            const receiverId = receiverIds[0];
-            const findQuery = `
-                SELECT DISTINCT ON (c.conversation_id) 
-                    c.conversation_id, 
-                    a.username AS name, 
-                    c.type, 
-                    a.avatar AS avatar, 
-                    m.content AS last_message, 
-                    m.create_at AS last_time_message, 
-                    m.sender_id AS last_sender_id,  
-                    a.username AS last_sender_name 
-                FROM conversation c 
-                JOIN conversation_member cm ON cm.conversation_id = c.conversation_id 
-                JOIN conversation_member cm2 ON cm2.conversation_id = c.conversation_id 
-                JOIN account a ON a.user_id = cm.user_id 
-                LEFT JOIN message m ON m.conversation_id = c.conversation_id 
-                WHERE cm.user_id = $1 
-                    AND cm2.user_id = $2
-                    AND c.type = 'private' 
-                ORDER BY c.conversation_id, m.create_at DESC
-            `;
+            c.conversation_id,
 
-            const existing = await client.query(findQuery, [senderId, receiverId]);
+            u.username AS name,
+            u.avatar,
 
-            if (existing.rows.length > 0) {
-                // ĐÃ CÓ: Trả về ID cũ luôn
-                await client.query('COMMIT');
-                return res.json( existing.rows[0] );
-            }
-        }
+            c.type,
 
-        // CHƯA CÓ: Tiến hành tạo mới
-        const newConvId = uuidv4();
+            m.content AS last_message,
+            m.create_at AS last_time_message,
+            m.sender_id AS last_sender_id,
+            sender.username AS last_sender_name
 
-        // 2. Tạo Conversation mới
-        const createConvQuery = `
-            INSERT INTO Conversation (conversation_id, name, type, create_by, create_at, avatar) 
-            VALUES ($1, $2, $3, $4, NOW(), $5) 
-            RETURNING *;
-        `;
+          FROM conversation c
 
-        const newConvResult =await client.query(
-            createConvQuery,
-            [newConvId, name || null, type, senderId, avatar || null]
+          JOIN conversation_member me
+            ON me.conversation_id = c.conversation_id
+
+          JOIN conversation_member other_user
+            ON other_user.conversation_id = c.conversation_id
+
+          JOIN account u
+            ON u.user_id = other_user.user_id
+
+          LEFT JOIN message m
+            ON m.conversation_id = c.conversation_id
+
+          LEFT JOIN account sender
+            ON sender.user_id = m.sender_id
+
+          WHERE c.type='private'
+            AND me.user_id = $1
+            AND other_user.user_id = $2
+
+          ORDER BY c.conversation_id, m.create_at DESC
+          `,
+          [senderId, receiverId]
         );
 
-        const allMemberIds = [... new Set([senderId, ...receiverIds])];
-        const addMemberQuery = `INSERT INTO Conversation_member (id, conversation_id, user_id, role, join_at) VALUES ($1, $2, $3, $4, NOW())`;
-        
-        for(const uID of allMemberIds) {
-            const role = (uID === senderId) ? 'admin' : 'member';
-            await client.query(addMemberQuery, [uuidv4(), newConvId, uID, role]);
-        }
+      if (
+        existing.rows.length > 0
+      ) {
+        await client.query(
+          "COMMIT"
+        );
 
-        await client.query('COMMIT');
-        res.status(201).json(newConvResult.rows[0]);
+        return res.json(
+          existing.rows[0]
+        );
+      }
 
-    } catch (error) {
-        await client.query('ROLLBACK');
-        console.error(error);
-        res.status(500).json("Lỗi tạo hội thoại");
-    } finally {
-        client.release();
+      /* create new private */
+      const newConvId =
+        uuidv4();
+
+      await client.query(
+        `
+        INSERT INTO conversation(
+          conversation_id,
+          name,
+          type,
+          create_by,
+          create_at,
+          avatar
+        )
+        VALUES(
+          $1,
+          null,
+          'private',
+          $2,
+          NOW(),
+          null
+        )
+        `,
+        [
+          newConvId,
+          senderId,
+        ]
+      );
+
+      for (const uid of [
+        senderId,
+        receiverId,
+      ]) {
+        await client.query(
+          `
+          INSERT INTO conversation_member(
+            id,
+            conversation_id,
+            user_id,
+            role,
+            join_at
+          )
+          VALUES(
+            $1,
+            $2,
+            $3,
+            'member',
+            NOW()
+          )
+          `,
+          [
+            uuidv4(),
+            newConvId,
+            uid,
+          ]
+        );
+      }
+
+      await client.query(
+        "COMMIT"
+      );
+
+      return res.status(201).json({
+        conversation_id:
+          newConvId,
+        type: "private",
+        name: null,
+        avatar: null,
+        last_message: null,
+        last_time_message: null,
+        last_sender_id: null,
+        last_sender_name: null,
+      });
     }
+
+    /* ======================================
+       3. GROUP CHAT
+    ====================================== */
+    const newConvId =
+      uuidv4();
+
+    const created =
+      await client.query(
+        `
+        INSERT INTO conversation(
+          conversation_id,
+          name,
+          type,
+          create_by,
+          create_at,
+          avatar
+        )
+        VALUES(
+          $1,
+          $2,
+          'group',
+          $3,
+          NOW(),
+          $4
+        )
+        RETURNING *
+        `,
+        [
+          newConvId,
+          name ||
+            "Nhóm chat",
+          senderId,
+          avatar || null,
+        ]
+      );
+
+    const allMembers = [
+      ...new Set([
+        senderId,
+        ...receiverIds,
+      ]),
+    ];
+
+    for (const uid of allMembers) {
+      const role =
+        uid === senderId
+          ? "admin"
+          : "member";
+
+      await client.query(
+        `
+        INSERT INTO conversation_member(
+          id,
+          conversation_id,
+          user_id,
+          role,
+          join_at
+        )
+        VALUES(
+          $1,
+          $2,
+          $3,
+          $4,
+          NOW()
+        )
+        `,
+        [
+          uuidv4(),
+          newConvId,
+          uid,
+          role,
+        ]
+      );
+    }
+
+    await client.query(
+      "COMMIT"
+    );
+
+    return res
+      .status(201)
+      .json({
+        ...created.rows[0],
+        last_message: null,
+        last_time_message: null,
+        last_sender_id: null,
+        last_sender_name: null,
+      });
+  } catch (error) {
+    await client.query(
+      "ROLLBACK"
+    );
+
+    console.log(error);
+
+    return res
+      .status(500)
+      .json(
+        "Lỗi tạo hội thoại"
+      );
+  } finally {
+    client.release();
+  }
 };
