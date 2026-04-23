@@ -120,7 +120,7 @@ exports.getMessages = async (req, res) => {
     const userId = req.user.id;
 
     let query = `
-        SELECT m.*, a.file_url, a.file_size, u.username, u.avatar FROM public.message m 
+        SELECT m.*, a.file_url, a.file_size, u.username AS sender_name, u.avatar AS sender_avatar FROM public.message m 
         LEFT JOIN public.attachment a ON a.message_id = m.message_id 
         LEFT JOIN account u ON u.user_id = m.sender_id 
         WHERE m.conversation_id = $1 
