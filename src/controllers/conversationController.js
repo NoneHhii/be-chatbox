@@ -92,7 +92,7 @@ exports.addMember = async(req,res)=>{
 
 exports.getOrCreateConversation = async (req, res) => {
     const senderId = req.user.id;
-    const { receiverIds, name, avatar, type = 'private' } = req.body;
+    const { receiverIds, name, avatar, type = 'private', converId } = req.body;
 
     if (!receiverIds || !Array.isArray(receiverIds) || receiverIds.length === 0) {
         return res.status(400).json("Thiếu danh sách người nhận (receiverIds)");
@@ -101,6 +101,31 @@ exports.getOrCreateConversation = async (req, res) => {
     const client = await pool.connect();
     try {
         await client.query('BEGIN');
+
+        if (conversation_id) {
+            const checkIdQuery = `
+                SELECT DISTINCT ON (c.conversation_id)
+                    c.conversation_id,  
+                    c.name, 
+                    c.type, 
+                    c.avatar, 
+                    m.content AS last_message, 
+                    m.create_at AS last_time_message, 
+                    m.sender_id AS last_sender_id,  
+                    a.username AS last_sender_name  
+                FROM conversation c 
+                JOIN conversation_member cm ON c.conversation_id = cm.conversation_id 
+                LEFT JOIN message m ON m.conversation_id = c.conversation_id 
+                LEFT JOIN account a ON a.user_id = m.sender_id 
+                WHERE c.conversation_id = $1 AND cm.user_id = $2 
+				ORDER BY c.conversation_id, m.create_at DESC
+            `;
+            const result = await client.query(checkIdQuery, [conversation_id, senderId]);
+            if (result.rows.length > 0) {
+                await client.query('COMMIT');
+                return res.json(result.rows[0]);
+            }
+        }
 
         if(type === 'private' && receiverIds.length === 1) {
             const receiverId = receiverIds[0];
