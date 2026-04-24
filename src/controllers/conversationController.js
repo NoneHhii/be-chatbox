@@ -1,5 +1,6 @@
 const pool = require("../config/db");
 const {v4: uuidv4} = require("uuid");
+const {uploadFile} = require('../services/file.service');
 
 exports.createConversation = async (req, res) => {
     try {
@@ -73,20 +74,40 @@ exports.getConversations = async (req, res) => {
     }
 }
 
-exports.addMember = async(req,res)=>{
+exports.addMember = async (req, res) => {
+    const { userId } = req.body; // ID người được thêm
+    const conversation_id = req.params.id;
+    const io = req.app.get("socketio");
 
- const {userId} = req.body;
+    try {
+        // 1. Thêm vào DB
+        await pool.query(
+            `INSERT INTO Conversation_member (id, conversation_id, user_id, role, join_at)
+             VALUES (uuid_generate_v4(), $1, $2, 'member', NOW())
+             ON CONFLICT DO NOTHING`,
+            [conversation_id, userId]
+        );
 
- await pool.query(
- `
- INSERT INTO Conversation_member
- VALUES(uuid_generate_v4(),$1,$2,'member',NOW())
- `,
- [req.params.id,userId]
- );
+        // 2. Lấy thông tin nhóm để gửi qua Socket
+        const groupInfo = await pool.query(
+            "SELECT * FROM Conversation WHERE conversation_id = $1",
+            [conversation_id]
+        );
 
- res.json({message:"member added"});
+        // 3. Socket: Báo cho người được thêm
+        if (io) {
+            io.to(userId).emit("added_to_group", groupInfo.rows[0]);
+            // Báo cho những người đang ở trong nhóm biết có thành viên mới
+            io.to(conversation_id).emit("new_member_joined", { 
+                conversation_id, 
+                userId 
+            });
+        }
 
+        res.json({ message: "member added", group: groupInfo.rows[0] });
+    } catch (err) {
+        res.status(500).json(err.message);
+    }
 };
 
 
@@ -286,6 +307,20 @@ exports.getOrCreateConversation = async (req, res) => {
         "COMMIT"
       );
 
+      const io = req.app.get("socketio");
+      if (io) {
+          // Thông báo cho từng thành viên để họ cập nhật danh sách hội thoại
+          allMembers.forEach(uid => {
+              if (uid !== senderId) {
+                  io.to(uid).emit("added_to_group", {
+                      ...created.rows[0],
+                      last_message: "Bạn đã được thêm vào nhóm",
+                      last_time_message: new Date()
+                  });
+              }
+          });
+      }
+
       return res.status(201).json({
         conversation_id:
           newConvId,
@@ -404,35 +439,35 @@ exports.getOrCreateConversation = async (req, res) => {
   }
 };
 
-// 1. Cập nhật thông tin nhóm (Tên/Ảnh)
+
 exports.updateGroupInfo = async (req, res) => {
-    const { conversation_id, name, avatar } = req.body;
+    const { conversation_id, name } = req.body;
     const userId = req.user.id;
     const io = req.app.get("socketio");
+    let avatarUrl = req.body.avatar;
 
     try {
-        // Kiểm tra quyền Admin (Chỉ admin mới được đổi info nhóm)
+        // 1. Check quyền Admin
         const check = await pool.query(
             "SELECT role FROM conversation_member WHERE conversation_id = $1 AND user_id = $2",
             [conversation_id, userId]
         );
-        if (check.rows[0]?.role !== 'admin') return res.status(403).json("Chỉ Admin mới có quyền này");
+        if (check.rows[0]?.role !== 'admin') return res.status(403).json("Chỉ Admin mới có quyền");
 
+        if (req.file) {
+            avatarUrl = await uploadFile(req.file);
+        }
+
+        // 3. Cập nhật Database
         const result = await pool.query(
             "UPDATE conversation SET name = COALESCE($1, name), avatar = COALESCE($2, avatar) WHERE conversation_id = $3 RETURNING *",
-            [name, avatar, conversation_id]
+            [name, avatarUrl, conversation_id]
         );
 
         const updatedGroup = result.rows[0];
 
-        // SOCKET: Thông báo cho cả nhóm là thông tin đã thay đổi
         if (io) {
-            io.to(conversation_id).emit("group_updated", {
-                conversation_id,
-                name: updatedGroup.name,
-                avatar: updatedGroup.avatar,
-                message: `Thông tin nhóm đã được cập nhật`
-            });
+            io.to(conversation_id).emit("group_updated", updatedGroup);
         }
 
         res.json(updatedGroup);
