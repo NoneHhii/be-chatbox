@@ -6,6 +6,7 @@ const upload = require("../middleware/uploadMiddleware");
 router.get("/", auth, conversationController.getConversations);
 router.post("/", auth, conversationController.createConversation);
 router.post("/merge", auth, conversationController.getOrCreateConversation);
+router.delete('/:id/delete-group', auth, conversationController.deleteGroup);
 router.get("/:id", auth, conversationController.getConversations);
 router.post('/:id/add-members', auth, conversationController.addMember);
 router.delete('/group/remove-member', auth, conversationController.removeMember);

@@ -552,3 +552,34 @@ exports.getMembers = async (req, res) => {
         res.json(result.rows);
     } catch (err) { res.status(500).json(err.message); }
 };
+
+// conversationController.js
+exports.deleteGroup = async (req, res) => {
+    const { id } = req.params; // conversationId
+    const userId = req.user.id;
+    const io = req.app.get("socketio");
+
+    try {
+        // 1. Kiểm tra quyền (Chỉ Admin/Chủ nhóm mới được giải tán)
+        const checkAdmin = await pool.query(
+            "SELECT role FROM Conversation_member WHERE conversation_id = $1 AND user_id = $2",
+            [id, userId]
+        );
+
+        if (checkAdmin.rows[0]?.role !== 'admin') {
+            return res.status(403).json("Chỉ Trưởng nhóm mới có quyền giải tán!");
+        }
+
+        // 2. Phát socket trước khi xóa để mọi người kịp nhận tin
+        if (io) {
+            io.to(id).emit("group_dissolved", { conversation_id: id });
+        }
+
+        // 3. Xóa dữ liệu (Ràng buộc khóa ngoại sẽ tự xóa member và message nếu Khoa để ON DELETE CASCADE)
+        await pool.query("DELETE FROM Conversation WHERE conversation_id = $1", [id]);
+
+        res.json({ message: "Nhóm đã được giải tán" });
+    } catch (err) {
+        res.status(500).json(err.message);
+    }
+};
