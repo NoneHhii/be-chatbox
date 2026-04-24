@@ -133,8 +133,9 @@ exports.getMessages = async (req, res) => {
     const values = [convId, userId];
 
     if (cursor) {
-        query += ` AND m.create_at < $2`;
         values.push(cursor);
+        query += ` AND m.create_at < $2`;
+        
     }
 
     query += ` ORDER BY m.create_at DESC LIMIT $${values.length + 1}`;
