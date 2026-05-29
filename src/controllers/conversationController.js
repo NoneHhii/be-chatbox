@@ -310,7 +310,7 @@ exports.getOrCreateConversation = async (req, res) => {
       const io = req.app.get("socketio");
       if (io) {
           // Thông báo cho từng thành viên để họ cập nhật danh sách hội thoại
-          allMembers.forEach(uid => {
+          [senderId, receiverId].forEach(uid => {
               if (uid !== senderId) {
                   io.to(uid).emit("added_to_group", {
                       ...created.rows[0],
@@ -412,6 +412,23 @@ exports.getOrCreateConversation = async (req, res) => {
     await client.query(
       "COMMIT"
     );
+
+    const io = req.app.get("socketio");
+
+    if(io) {
+      allMembers.forEach((uid) => {
+        io.to(uid).emit("conversation_created", {
+          conversation_id: newConvId,
+          name: name || "Nhóm chat",
+          type: "group",
+          avatar: avatar || created.rows[0].avatar,
+          last_message: "Bắt đầu cuộc trò chuyện ngay",
+          last_time_message: new Date().toISOString(),
+          last_sender_id: null,
+          last_sender_name: null,
+        });
+      });
+    }
 
     return res
       .status(201)
