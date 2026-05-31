@@ -600,3 +600,128 @@ exports.deleteGroup = async (req, res) => {
         res.status(500).json(err.message);
     }
 };
+
+// 1. Tìm kiếm tin nhắn theo từ khóa trong phòng chat
+exports.searchMessages = async (req, res) => {
+    const { conversationId, keyword } = req.query;
+    try {
+        const result = await pool.query(
+            `SELECT * FROM Messages 
+             WHERE conversation_id = $1 AND message_type = 'text' AND message_text ILIKE $2
+             ORDER BY created_at DESC`,
+            [conversationId, `%${keyword}%`]
+        );
+        res.json(result.rows);
+    } catch (err) { res.status(500).json(err.message); }
+};
+
+// 2. Thống kê kho Media (Ảnh/File)
+exports.getCloudMedia = async (req, res) => {
+    const { conversationId, type } = req.query; // type = 'image' hoặc 'file'
+    try {
+        const result = await pool.query(
+            `SELECT message_id, message_text as url, created_at FROM Messages 
+             WHERE conversation_id = $1 AND message_type = $2
+             ORDER BY created_at DESC`,
+            [conversationId, type]
+        );
+        res.json(result.rows);
+    } catch (err) { res.status(500).json(err.message); }
+};
+
+// 3. Ghim / Bỏ ghim trò chuyện
+exports.togglePinConversation = async (req, res) => {
+    const { conversationId, isPinned } = req.body;
+    const userId = req.user.id; // UUID
+    const io = req.app.get("socketio");
+
+    try {
+        await pool.query(
+            `UPDATE Conversation_member 
+             SET is_pinned = $1, pinned_at = CASE WHEN $1 = true THEN NOW() ELSE NULL END
+             WHERE conversation_id = $2 AND user_id = $3`,
+            [isPinned, conversationId, userId]
+        );
+
+        // Bắn socket về room cá nhân của User để đồng bộ tất cả thiết bị (App/Web)
+        if (io) {
+            io.to(userId).emit("conversation_pinned", { conversationId, isPinned, pinnedAt: new Date() });
+        }
+
+        res.json({ message: isPinned ? "Đã ghim" : "Đã bỏ ghim" });
+    } catch (err) { res.status(500).json(err.message); }
+};
+
+// 4. Ẩn trò chuyện bằng mã PIN
+exports.hideConversation = async (req, res) => {
+    const { conversationId, pinCode, isHidden } = req.body;
+    const userId = req.user.id;
+    const io = req.app.get("socketio");
+
+    try {
+        await pool.query(
+            `UPDATE Conversation_member SET is_hidden = $1, hidden_pin_code = $2
+             WHERE conversation_id = $3 AND user_id = $4`,
+            [isHidden, isHidden ? pinCode : null, conversationId, userId]
+        );
+
+        if (io) {
+            io.to(userId).emit("conversation_hidden", { conversationId, isHidden, pinCode });
+        }
+
+        res.json({ message: isHidden ? "Đã ẩn" : "Đã hiện" });
+    } catch (err) { res.status(500).json(err.message); }
+};
+
+// 5. Tắt / Bật thông báo nhóm
+exports.toggleMuteConversation = async (req, res) => {
+    const { conversationId, isMuted } = req.body;
+    const userId = req.user.id;
+    try {
+        await pool.query(
+            `UPDATE Conversation_member SET is_muted = $1 WHERE conversation_id = $2 AND user_id = $3`,
+            [isMuted, conversationId, userId]
+        );
+        res.json({ message: isMuted ? "Tắt thông báo thành công" : "Đã bật thông báo" });
+    } catch (err) { res.status(500).json(err.message); }
+};
+
+
+// 6. Xóa bạn bè
+exports.unfriend = async (req, res) => {
+    const { friendId } = req.body;
+    const userId = req.user.id;
+    try {
+        await pool.query(
+            `DELETE FROM Friendship 
+             WHERE (user_id1 = $1 AND user_id2 = $2) OR (user_id1 = $2 AND user_id2 = $1)`,
+            [userId, friendId]
+        );
+        res.json({ message: "Đã hủy kết bạn" });
+    } catch (err) { res.status(500).json(err.message); }
+};
+
+// 7. Chặn người dùng
+exports.blockUser = async (req, res) => {
+    const { targetUserId } = req.body; // UUID người bị chặn
+    const userId = req.user.id;        // UUID người chặn
+    const io = req.app.get("socketio");
+
+    try {
+        await pool.query(
+            `INSERT INTO BlockList (blocker_id, blocked_id) VALUES ($1, $2)
+             ON CONFLICT DO NOTHING`,
+            [userId, targetUserId]
+        );
+
+        // Bắn tín hiệu cho cả 2 người để cập nhật trạng thái block lập tức
+        if (io) {
+            // Báo cho người bị chặn
+            io.to(targetUserId).emit("you_are_blocked", { blockedBy: userId });
+            // Báo lại cho các thiết bị khác của người chặn
+            io.to(userId).emit("user_blocked_success", { targetUserId });
+        }
+
+        res.json({ message: "Đã chặn người dùng này" });
+    } catch (err) { res.status(500).json(err.message); }
+};
