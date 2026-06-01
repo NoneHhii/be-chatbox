@@ -725,3 +725,154 @@ exports.blockUser = async (req, res) => {
         res.json({ message: "Đã chặn người dùng này" });
     } catch (err) { res.status(500).json(err.message); }
 };
+
+exports.toggleMemberChatPermission = async (req, res) => {
+    const { conversationId, targetUserId, canChat } = req.body;
+    const io = req.app.get("socketio");
+    try {
+        await pool.query(
+            `UPDATE Conversation_member SET can_send_message = $1 
+             WHERE conversation_id = $2 AND user_id = $3`,
+            [canChat, conversationId, targetUserId]
+        );
+        if (io) {
+            io.to(conversationId).emit("member_permission_changed", { targetUserId, canChat, conversationId });
+        }
+        res.json({ message: "Cập nhật quyền thành viên thành công" });
+    } catch (err) { res.status(500).json(err.message); }
+};
+
+// Giao lại quyền Trưởng nhóm (Chuyển nhượng Admin cao nhất)
+exports.transferAdminRole = async (req, res) => {
+    const { conversationId, newAdminId } = req.body;
+    const currentAdminId = req.user.id;
+    const io = req.app.get("socketio");
+    try {
+        // Hạ cấp Admin cũ xuống thành viên thường
+        await pool.query(
+            `UPDATE Conversation_member SET role = 'member' WHERE conversation_id = $1 AND user_id = $2`,
+            [conversationId, currentAdminId]
+        );
+        // Cấp quyền Admin mới cho người được chọn
+        await pool.query(
+            `UPDATE Conversation_member SET role = 'admin' WHERE conversation_id = $1 AND user_id = $2`,
+            [conversationId, newAdminId]
+        );
+        if (io) {
+            io.to(conversationId).emit("admin_transferred", { conversationId, oldAdminId: currentAdminId, newAdminId });
+        }
+        res.json({ message: "Đã chuyển nhượng quyền trưởng nhóm thành công" });
+    } catch (err) { res.status(500).json(err.message); }
+};
+
+exports.generateJoinCode = async (req, res) => {
+    const { conversationId } = req.body;
+    const code = Math.random().toString(36).substring(2, 8).toUpperCase(); // Ví dụ: ABC123
+    try {
+        await pool.query(
+            `UPDATE Conversation SET join_code = $1 WHERE conversation_id = $2`,
+            [code, conversationId]
+        );
+        res.json({ join_code: code });
+    } catch (err) { res.status(500).json(err.message); }
+};
+
+// Tham gia nhóm bằng mã Code công khai
+exports.joinGroupByCode = async (req, res) => {
+    const { code } = req.body;
+    const userId = req.user.id;
+    try {
+        const group = await pool.query(`SELECT conversation_id, is_approval_required FROM Conversation WHERE join_code = $1`, [code]);
+        if (group.rows.length === 0) return res.status(404).json("Mã nhóm không tồn tại!");
+        
+        const { conversation_id, is_approval_required } = group.rows[0];
+
+        // Nếu nhóm cần duyệt, thêm vào trạng thái chờ duyệt (Hoặc thêm thẳng nếu không cần)
+        await pool.query(
+            `INSERT INTO Conversation_member (conversation_id, user_id, role) 
+             VALUES ($1, $2, 'member') ON CONFLICT DO NOTHING`,
+            [conversation_id, userId]
+        );
+        res.json({ conversationId: conversation_id, status: "success" });
+    } catch (err) { res.status(500).json(err.message); }
+};
+
+exports.createPoll = async (req, res) => {
+    const { conversationId, question, options } = req.body; // options là mảng chữ ['Thứ 2', 'Thứ 3']
+    const userId = req.user.id;
+    const io = req.app.get("socketio");
+    try {
+        const poll = await pool.query(
+            `INSERT INTO Polls (conversation_id, creator_id, question) VALUES ($1, $2, $3) RETURNING *`,
+            [conversationId, userId, question]
+        );
+        const pollId = poll.rows[0].poll_id;
+
+        // Lưu các phương án lựa chọn
+        for (let option of options) {
+            await pool.query(`INSERT INTO Poll_options (poll_id, option_text) VALUES ($1, $2)`, [pollId, option]);
+        }
+
+        if (io) {
+            io.to(conversationId).emit("new_poll_created", { conversationId, pollId, question });
+        }
+        res.json({ message: "Tạo bình chọn thành công", pollId });
+    } catch (err) { res.status(500).json(err.message); }
+};
+
+exports.getGroupJoinCode = async (req, res) => {
+    const { id } = req.params; // conversationId
+    try {
+        const result = await pool.query('SELECT join_code FROM Conversation WHERE conversation_id = $1', [id]);
+        let code = result.rows[0]?.join_code;
+        
+        if (!code) {
+            code = Math.random().toString(36).substring(2, 8).toUpperCase(); // Ví dụ: QR79X2
+            await pool.query('UPDATE Conversation SET join_code = $1 WHERE conversation_id = $2', [code, id]);
+        }
+        res.json({ join_code: code });
+    } catch (err) { res.status(500).json(err.message); }
+};
+
+// 2. Tạo nhắc hẹn mới và emit qua Socket để toàn nhóm nhìn thấy banner nhảy lên
+exports.createReminder = async (req, res) => {
+    const { id } = req.params; // conversationId
+    const { title, remindAt } = req.body; // remindAt định dạng ISO string
+    const userId = req.user.id;
+    const io = req.app.get("socketio");
+
+    try {
+        const result = await pool.query(
+            `INSERT INTO Reminders (conversation_id, creator_id, title, remind_at) 
+             VALUES ($1, $2, $3, $4) RETURNING *`,
+            [id, userId, title, remindAt]
+        );
+        
+        const newReminder = result.rows[0];
+
+        // Bắn socket về phòng chat để cập nhật Banner Real-time công khai
+        if (io) {
+            io.to(id).emit("new_reminder", { conversationId: id, reminder: newReminder });
+        }
+
+        res.json(newReminder);
+    } catch (err) { res.status(500).json(err.message); }
+};
+
+// 3. Xóa nhắc hẹn
+exports.deleteReminder = async (req, res) => {
+    const { reminderId } = req.params;
+    const io = req.app.get("socketio");
+    try {
+        const check = await pool.query('SELECT conversation_id FROM Reminders WHERE reminder_id = $1', [reminderId]);
+        if (check.rows.length === 0) return res.status(404).json("Không tìm thấy nhắc hẹn");
+        
+        const conversationId = check.rows[0].conversation_id;
+        await pool.query('DELETE FROM Reminders WHERE reminder_id = $1', [reminderId]);
+
+        if (io) {
+            io.to(conversationId).emit("reminder_deleted", { conversationId, reminderId });
+        }
+        res.json({ message: "Đã xóa nhắc hẹn" });
+    } catch (err) { res.status(500).json(err.message); }
+};
