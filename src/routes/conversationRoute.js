@@ -3,7 +3,7 @@ const auth  = require("../middleware/authMiddleware");
 const conversationController = require("../controllers/conversationController")
 const upload = require("../middleware/uploadMiddleware");
 
-router.use(authMiddleware);
+router.use(auth);
 
 router.put('/transfer-admin', conversationController.transferAdminRole);
 router.get('/:id/join-code', conversationController.getGroupJoinCode);
