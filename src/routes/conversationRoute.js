@@ -21,7 +21,7 @@ router.put('/group/info', auth, upload.single('avatar'), conversationController.
 router.put('/group/set-admin', auth, conversationController.setAdmin);
 router.get('/:id/members', auth, conversationController.getMembers);
 router.get('/search', auth, conversationController.searchMessages);
-router.get('/meadia', auth, conversationController.getCloudMedia);
+router.get('/media', auth, conversationController.getCloudMedia);
 router.put('/toggle-pin', auth, conversationController.togglePinConversation);
 router.put('/hide', auth, conversationController.hideConversation);
 router.put('/toggle-mute', auth, conversationController.toggleMuteConversation);
