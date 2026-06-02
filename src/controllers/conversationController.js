@@ -620,7 +620,8 @@ exports.getCloudMedia = async (req, res) => {
     const { conversationId, type } = req.query; // type = 'image' hoặc 'file'
     try {
         const result = await pool.query(
-            `SELECT message_id, content as url, create_at FROM Messages 
+            `SELECT message_id, content as filename, a.file_url as url, create_at FROM Messages 
+             LEFT JOIN public.attachment a ON a.message_id = m.message_id 
              WHERE conversation_id = $1 AND message_type = $2
              ORDER BY create_at DESC`,
             [conversationId, type]
