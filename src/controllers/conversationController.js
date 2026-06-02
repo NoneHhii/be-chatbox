@@ -606,7 +606,7 @@ exports.searchMessages = async (req, res) => {
     const { conversationId, keyword } = req.query;
     try {
         const result = await pool.query(
-            `SELECT * FROM Messages 
+            `SELECT * FROM Message 
              WHERE conversation_id = $1 AND message_type = 'text' AND message_text ILIKE $2
              ORDER BY created_at DESC`,
             [conversationId, `%${keyword}%`]
@@ -693,7 +693,7 @@ exports.unfriend = async (req, res) => {
     const userId = req.user.id;
     try {
         await pool.query(
-            `DELETE FROM Friendship 
+            `DELETE FROM Friend 
              WHERE (user_id1 = $1 AND user_id2 = $2) OR (user_id1 = $2 AND user_id2 = $1)`,
             [userId, friendId]
         );
