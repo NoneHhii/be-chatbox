@@ -25,7 +25,7 @@ router.get('/media', auth, conversationController.getCloudMedia);
 router.put('/toggle-pin', auth, conversationController.togglePinConversation);
 router.put('/hide', auth, conversationController.hideConversation);
 router.put('/toggle-mute', auth, conversationController.toggleMuteConversation);
-router.get('/unfriend', auth, conversationController.unfriend);
+router.delete('/unfriend', auth, conversationController.unfriend);
 router.get('/block', auth, conversationController.blockUser);
 router.get("/:id", auth, conversationController.getConversations);
 router.post('/:id/add-members', auth, conversationController.addMember);
