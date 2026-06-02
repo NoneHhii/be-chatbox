@@ -607,7 +607,7 @@ exports.searchMessages = async (req, res) => {
     try {
         const result = await pool.query(
             `SELECT * FROM Message 
-             WHERE conversation_id = $1 AND message_type = 'text' AND message_text ILIKE $2
+             WHERE conversation_id = $1 AND message_type = 'text' AND content ILIKE $2
              ORDER BY created_at DESC`,
             [conversationId, `%${keyword}%`]
         );
@@ -620,7 +620,7 @@ exports.getCloudMedia = async (req, res) => {
     const { conversationId, type } = req.query; // type = 'image' hoặc 'file'
     try {
         const result = await pool.query(
-            `SELECT message_id, message_text as url, created_at FROM Messages 
+            `SELECT message_id, content as url, created_at FROM Messages 
              WHERE conversation_id = $1 AND message_type = $2
              ORDER BY created_at DESC`,
             [conversationId, type]
