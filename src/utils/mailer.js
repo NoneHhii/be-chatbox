@@ -6,8 +6,8 @@ const sendOTPEmail = async (userEmail, otpCode) => {
       "https://api.brevo.com/v3/smtp/email",
       {
         sender: {
-          name: "ChatBox",
-          email: "your_verified_email@gmail.com",
+          name: "chatbox",
+          email: "thienkhoatgddqng@gmail.com",
         },
         to: [
           {
