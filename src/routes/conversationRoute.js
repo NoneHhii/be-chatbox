@@ -10,6 +10,8 @@ router.get('/:id/join-code', conversationController.getGroupJoinCode);
 router.post('/generate-code', conversationController.generateJoinCode);
 router.post('/join-by-code', conversationController.joinGroupByCode);
 router.post('/polls', conversationController.createPoll);
+router.get('/:conversationId/polls', conversationController.getPolls);
+router.post('/polls/vote', conversationController.voteOption);
 router.post('/:id/reminders', conversationController.createReminder);
 router.delete('/reminders/:reminderId', conversationController.deleteReminder);
 router.get("/", auth, conversationController.getConversations);

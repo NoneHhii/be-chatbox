@@ -828,6 +828,88 @@ exports.createPoll = async (req, res) => {
     } catch (err) { res.status(500).json(err.message); }
 };
 
+exports.getPolls = async (req, res) => {
+    const { conversationId } = req.params; // Hoặc req.query tùy cấu hình route của Khoa
+    const userId = req.user.id; // Dùng để check xem user hiện tại đã vote phương án nào chưa
+
+    try {
+        const query = `
+            SELECT 
+                p.poll_id,
+                p.question,
+                p.created_at,
+                u.username AS creator_name,
+                u.avatar AS creator_avatar,
+                -- Gom các option thành một mảng JSON
+                JSON_AGG(
+                    JSON_BUILD_OBJECT(
+                        'option_id', po.option_id,
+                        'option_text', po.option_text,
+                        -- Đếm tổng số lượt vote cho option này
+                        'vote_count', (SELECT COUNT(*) FROM Poll_votes pv WHERE pv.option_id = po.option_id),
+                        -- Trả về true/false nếu user hiện tại đã vote cho option này
+                        'is_voted_by_me', EXISTS(
+                            SELECT 1 FROM Poll_votes pv 
+                            WHERE pv.option_id = po.option_id AND pv.user_id = $2
+                        )
+                    )
+                ) AS options
+            FROM Polls p
+            JOIN Account u ON u.user_id = p.creator_id
+            LEFT JOIN Poll_options po ON po.poll_id = p.poll_id
+            WHERE p.conversation_id = $1
+            GROUP BY p.poll_id, u.username, u.avatar
+            ORDER BY p.created_at DESC;
+        `;
+
+        const result = await pool.query(query, [conversationId, userId]);
+        res.json(result.rows);
+    } catch (err) {
+        console.error("Lỗi getPolls:", err);
+        res.status(500).json(err.message);
+    }
+};
+
+exports.voteOption = async (req, res) => {
+    const { pollId, optionId } = req.body;
+    const userId = req.user.id;
+    const io = req.app.get("socketio");
+
+    try {
+        // Sử dụng ON CONFLICT để xử lý: Nếu user đã vote trong poll này rồi thì UPDATE sang option_id mới
+        await pool.query(
+            `INSERT INTO Poll_votes (poll_id, option_id, user_id) 
+             VALUES ($1, $2, $3)
+             ON CONFLICT (poll_id, user_id) 
+             DO UPDATE SET option_id = EXCLUDED.option_id`,
+            [pollId, optionId, userId]
+        );
+
+        // Lấy lại danh sách vote mới nhất của Poll này để bắn qua Socket cập nhật UI toàn nhóm
+        const updatedVotes = await pool.query(
+            `SELECT option_id, COUNT(*) as vote_count 
+             FROM Poll_votes WHERE poll_id = $1 GROUP BY option_id`,
+            [pollId]
+        );
+
+        // Bắn tín hiệu real-time cập nhật thanh tỷ lệ phần trăm vote ngoài màn hình chat
+        if (io) {
+            const conversationResult = await pool.query(`SELECT conversation_id FROM Polls WHERE poll_id = $1`, [pollId]);
+            const conversationId = conversationResult.rows[0]?.conversation_id;
+            
+            io.to(conversationId).emit("poll_voted_updated", { 
+                pollId, 
+                votes: updatedVotes.rows 
+            });
+        }
+
+        res.json({ message: "Bình chọn thành công" });
+    } catch (err) {
+        console.error("Lỗi voteOption:", err);
+        res.status(500).json(err.message);
+    }
+};
+
 exports.getGroupJoinCode = async (req, res) => {
     const { id } = req.params; // conversationId
     try {
