@@ -88,18 +88,39 @@ module.exports = (io) => {
 
     // A. Phát thông báo cuộc gọi đến (Để App nhận biết tự bật màn hình CallScreen lên)
     socket.on("call_user", (data) => {
-      if (data.targetUserId) {
-        console.log(`[Call Signal] ${socket.userId} -> ${data.targetUserId} | Loại: ${data.type} | Giai đoạn: ${data.phase || "WebRTC"}`);
-        
-        // Phát dữ liệu chéo sang phòng cá nhân của người nhận qua cổng "incoming_call"
-        socket.broadcast.to(data.targetUserId).emit("incoming_call", {
-          ...data,
-          conversationId: data.conversationId || data.id,
-          fromUserId: socket.userId,
-          senderId: socket.userId
-        });
-      }
-    });
+  if (!data.targetUserId) return;
+
+  const target = io.to(data.targetUserId);
+
+  switch (data.type) {
+    case "webrtc:offer":
+      target.emit("webrtc:offer", {
+        ...data,
+        fromUserId: socket.userId,
+      });
+      break;
+
+    case "webrtc:answer":
+      target.emit("webrtc:answer", {
+        ...data,
+        fromUserId: socket.userId,
+      });
+      break;
+
+    case "webrtc:ice-candidate":
+      target.emit("webrtc:ice-candidate", {
+        ...data,
+        fromUserId: socket.userId,
+      });
+      break;
+
+    default:
+      target.emit("incoming_call", {
+        ...data,
+        fromUserId: socket.userId,
+      });
+  }
+});
 
     // Cổng phụ hồi đáp Answer dành cho Web gốc (giữ để không lỗi logic Web cũ)
     socket.on("answer_call", (data) => {
