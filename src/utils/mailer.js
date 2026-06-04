@@ -1,53 +1,45 @@
-const nodemailer = require("nodemailer");
+const Brevo = require("@getbrevo/brevo");
+
+const apiInstance = new Brevo.TransactionalEmailsApi();
+
+apiInstance.setApiKey(
+  Brevo.TransactionalEmailsApiApiKeys.apiKey,
+  process.env.BREVO_API_KEY
+);
 
 const sendOTPEmail = async (userEmail, otpCode) => {
-
-    console.log("Check EMAIL_PASS:", process.env.EMAIL_PASS ? "Đã nhận" : "Chưa nhận");
-  const transporter = nodemailer.createTransport({
-    host: "smtp.gmail.com",
-    port: 587,
-    secure: false,
-    auth: {
-      user: "thienkhoatgddqng@gmail.com",
-      pass: process.env.EMAIL_PASS,
-    },
-    connectionTimeout: 30000,
-    greetingTimeout: 30000,
-    socketTimeout: 30000,
-  });
-
-  const mailOptions = {
-    from: '"Hệ thống Xác thực" <chatboxl@gmail.com>',
-    to: userEmail,
-    subject: `Mã xác thực OTP của bạn: ${otpCode}`,
-    html: `
-      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #eee; padding: 20px;">
-        <h2 style="color: #333; text-align: center;">Xác thực tài khoản</h2>
-        <p>Chào bạn,</p>
-        <p>Mã xác thực (OTP) của bạn là:</p>
-        <div style="background: #f4f4f4; padding: 20px; text-align: center; font-size: 32px; font-weight: bold; letter-spacing: 5px; color: #007bff; border-radius: 8px;">
-          ${otpCode}
-        </div>
-        <p style="margin-top: 20px;">Mã này sẽ hết hạn sau <b>5 phút</b>. Vui lòng không chia sẻ mã này với bất kỳ ai.</p>
-        <hr style="border: none; border-top: 1px solid #eee;" />
-        <p style="font-size: 12px; color: #888;">Đây là email tự động, vui lòng không phản hồi.</p>
-      </div>
-    `,
-  };
-
   try {
-    console.log("Bắt đầu gửi mail...");
-    const info = await transporter.sendMail(mailOptions);
-    console.log("OTP Sent: " + info.response);
-    console.log("Đã gửi mail");
-    console.log(info);
+    const email = {
+      sender: {
+        name: "ChatBox",
+        email: "youraccount@gmail.com",
+      },
+      to: [
+        {
+          email: userEmail,
+        },
+      ],
+      subject: "Mã OTP xác thực",
+      htmlContent: `
+        <h2>Xác thực tài khoản</h2>
+        <p>Mã OTP của bạn là:</p>
+        <h1>${otpCode}</h1>
+        <p>Mã có hiệu lực trong 5 phút.</p>
+      `,
+    };
+
+    const result = await apiInstance.sendTransacEmail(email);
+
+    console.log("Email sent:", result);
+
     return { success: true };
   } catch (error) {
-    console.error("===== MAIL ERROR =====");
-    console.error(error);
-    console.error(error.code);
-    console.error(error.response);
-    console.error("======================");
+    console.error("Brevo Error:", error);
+
+    return {
+      success: false,
+      error,
+    };
   }
 };
 
