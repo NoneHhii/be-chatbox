@@ -829,7 +829,7 @@ exports.createPoll = async (req, res) => {
 };
 
 exports.getPolls = async (req, res) => {
-    const { conversationId } = req.params; // Hoặc req.query tùy cấu hình route của Khoa
+    const { conversationId } = req.params;
     const userId = req.user.id; // Dùng để check xem user hiện tại đã vote phương án nào chưa
 
     try {

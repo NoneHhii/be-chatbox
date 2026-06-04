@@ -1,18 +1,26 @@
 const nodemailer = require("nodemailer");
 
 const sendOTPEmail = async (userEmail, otpCode) => {
-
-    console.log("Check EMAIL_PASS:", process.env.EMAIL_PASS ? "Đã nhận" : "Chưa nhận");
+  console.log("Check EMAIL_PASS:", process.env.EMAIL_PASS ? "Đã nhận" : "Chưa nhận");
+  
+  // 1. Cấu hình Transporter chi tiết hơn, ép chạy qua Port 587 bảo mật của Render
   const transporter = nodemailer.createTransport({
-    service: "gmail",
+    host: "smtp.gmail.com",
+    port: 587,
+    secure: false, // Bắt buộc false đối với cổng 587
     auth: {
       user: "thienkhoatgddqng@gmail.com",
-      pass: process.env.EMAIL_PASS,
+      pass: process.env.EMAIL_PASS, // Mật khẩu ứng dụng (App Password) 16 ký tự
     },
+    tls: {
+      rejectUnauthorized: false // Bỏ qua chặn chứng chỉ trên môi trường deploy
+    }
   });
 
+  // 2. Chỉnh sửa mailOptions khớp email gốc
   const mailOptions = {
-    from: '"Hệ thống Xác thực" <chatboxl@gmail.com>',
+    // Để email thật trong dấu < > trùng với user auth ở trên nha Khoa
+    from: '"Hệ thống Xác thực" <thienkhoatgddqng@gmail.com>', 
     to: userEmail,
     subject: `Mã xác thực OTP của bạn: ${otpCode}`,
     html: `
@@ -32,10 +40,10 @@ const sendOTPEmail = async (userEmail, otpCode) => {
 
   try {
     const info = await transporter.sendMail(mailOptions);
-    console.log("OTP Sent: " + info.response);
+    console.log("OTP Sent thành công: " + info.response);
     return { success: true };
   } catch (error) {
-    console.error("Lỗi gửi OTP: ", error);
+    console.error("Lỗi gửi OTP thực tế tại Transporter: ", error);
     return { success: false, error };
   }
 };
