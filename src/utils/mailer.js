@@ -5,12 +5,15 @@ const sendOTPEmail = async (userEmail, otpCode) => {
     console.log("Check EMAIL_PASS:", process.env.EMAIL_PASS ? "Đã nhận" : "Chưa nhận");
   const transporter = nodemailer.createTransport({
     host: "smtp.gmail.com",
-    port: 465,
-    secure: true,
+    port: 587,
+    secure: false,
     auth: {
       user: "thienkhoatgddqng@gmail.com",
       pass: process.env.EMAIL_PASS,
     },
+    connectionTimeout: 30000,
+    greetingTimeout: 30000,
+    socketTimeout: 30000,
   });
 
   const mailOptions = {
