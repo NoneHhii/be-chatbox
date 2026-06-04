@@ -89,58 +89,34 @@ module.exports = (io) => {
     // A. Phát thông báo cuộc gọi đến (Để App nhận biết tự bật màn hình CallScreen lên)
     socket.on("call_user", (data) => {
       if (data.targetUserId) {
-        console.log(`[Call] ${socket.userId} đang gọi cho ${data.targetUserId}`);
-        // .broadcast.to giúp gửi đến toàn bộ socket của targetUser NGOẠI TRỪ chính socket vừa gọi
+        console.log(`[Call Signal] ${socket.userId} -> ${data.targetUserId} | Loại: ${data.type} | Giai đoạn: ${data.phase || "WebRTC"}`);
+        
+        // Phát dữ liệu chéo sang phòng cá nhân của người nhận qua cổng "incoming_call"
         socket.broadcast.to(data.targetUserId).emit("incoming_call", {
+          ...data,
           conversationId: data.conversationId || data.id,
-          senderId: socket.userId,
-          senderName: data.senderName,
-          senderAvatar: data.senderAvatar,
-          isVideo: data.isVideo === "true" || data.isVideo === true
+          fromUserId: socket.userId,
+          senderId: socket.userId
         });
       }
     });
 
-    // B. Lắng nghe và chuyển tiếp gói tín hiệu GỌI ĐI (webrtc:offer)
-    socket.on("webrtc:offer", (data) => {
-      if (data.to) {
-        console.log(`[WebRTC] Gửi Offer từ ${socket.userId} -> ${data.to}`);
-        socket.broadcast.to(data.to).emit("webrtc:offer", {
-          senderId: socket.userId,
-          signal: data.signal,
-          isVideo: data.isVideo
-        });
+    // Cổng phụ hồi đáp Answer dành cho Web gốc (giữ để không lỗi logic Web cũ)
+    socket.on("answer_call", (data) => {
+      if (data.callerId) {
+        io.to(data.callerId).emit("call_answered", data);
       }
     });
 
-    // C. Lắng nghe và chuyển tiếp gói tín hiệu PHẢN HỒI (webrtc:answer)
-    socket.on("webrtc:answer", (data) => {
-      if (data.to) {
-        console.log(`[WebRTC] Gửi Answer từ ${socket.userId} -> ${data.to}`);
-        socket.broadcast.to(data.to).emit("webrtc:answer", {
-          senderId: socket.userId,
-          signal: data.signal
-        });
-      }
-    });
-
-    // D. Lắng nghe trao đổi cấu hình định tuyến mạng (webrtc:ice-candidate)
-    socket.on("webrtc:ice-candidate", (data) => {
-      if (data.to) {
-        socket.broadcast.to(data.to).emit("webrtc:ice-candidate", {
-          senderId: socket.userId,
-          candidate: data.candidate
-        });
-      }
-    });
-
-    // E. Lắng nghe sự kiện gác máy cúp cuộc gọi
+    // Lắng nghe sự kiện cúp máy
     socket.on("end_call", (data) => {
-      if (data.conversationId) {
-        console.log(`[Call] Cuộc gọi tại phòng ${data.conversationId} đã bị ngắt.`);
-        // Gửi thông báo cho toàn bộ thành viên trong phòng chat lập tức đóng màn hình cuộc gọi
-        io.to(data.conversationId).emit("end_call");
-        io.to(data.conversationId).emit("call_ended"); // Đảm bảo đồng bộ cả 2 cổng Web/App
+      const convId = data.conversationId || data.id;
+      if (convId) {
+        console.log(`[Call] Cuộc gọi tại phòng ${convId} đã kết thúc.`);
+        
+        // Gửi thông báo đồng loạt cho cả phòng chat để đóng màn hình cuộc gọi ngay lập tức
+        io.to(convId).emit("end_call", { conversationId: convId });
+        io.to(convId).emit("call_ended", { conversationId: convId });
       }
     });
 
