@@ -23,9 +23,17 @@ module.exports = (io) => {
 
   io.on("connection", async (socket) => {
     console.log(`User authenticated: ${socket.userId} | Socket ID: ${socket.id}`);
+    console.log("===============");
+    console.log("SOCKET CONNECT");
+    console.log("USER:", socket.userId);
+    console.log("SOCKET:", socket.id);
+    console.log("===============");
     
     // Đưa Socket hiện tại vào phòng cá nhân định danh theo userId
     socket.join(socket.userId);
+    console.log(
+      `User ${socket.userId} joined personal room ${socket.userId}`
+    );
 
     // Tự động cập nhật trạng thái Online vào cơ sở dữ liệu
     try {
@@ -88,39 +96,46 @@ module.exports = (io) => {
 
     // A. Phát thông báo cuộc gọi đến (Để App nhận biết tự bật màn hình CallScreen lên)
     socket.on("call_user", (data) => {
-  if (!data.targetUserId) return;
+      console.log("========== SIGNAL ==========");
+      console.log("FROM:", socket.userId);
+      console.log("TO:", data.targetUserId);
+      console.log("TYPE:", data.type);
+      console.log("PHASE:", data.phase);
+      console.log("DATA:", JSON.stringify(data, null, 2));
+      console.log("============================");
+      if (!data.targetUserId) return;
 
-  const target = io.to(data.targetUserId);
+      const target = io.to(data.targetUserId);
 
-  switch (data.type) {
-    case "webrtc:offer":
-      target.emit("webrtc:offer", {
-        ...data,
-        fromUserId: socket.userId,
-      });
-      break;
+      switch (data.type) {
+        case "webrtc:offer":
+          target.emit("webrtc:offer", {
+            ...data,
+            fromUserId: socket.userId,
+          });
+          break;
 
-    case "webrtc:answer":
-      target.emit("webrtc:answer", {
-        ...data,
-        fromUserId: socket.userId,
-      });
-      break;
+        case "webrtc:answer":
+          target.emit("webrtc:answer", {
+            ...data,
+            fromUserId: socket.userId,
+          });
+          break;
 
-    case "webrtc:ice-candidate":
-      target.emit("webrtc:ice-candidate", {
-        ...data,
-        fromUserId: socket.userId,
-      });
-      break;
+        case "webrtc:ice-candidate":
+          target.emit("webrtc:ice-candidate", {
+            ...data,
+            fromUserId: socket.userId,
+          });
+          break;
 
-    default:
-      target.emit("incoming_call", {
-        ...data,
-        fromUserId: socket.userId,
-      });
-  }
-});
+        default:
+          target.emit("incoming_call", {
+            ...data,
+            fromUserId: socket.userId,
+          });
+      }
+    });
 
     // Cổng phụ hồi đáp Answer dành cho Web gốc (giữ để không lỗi logic Web cũ)
     socket.on("answer_call", (data) => {
