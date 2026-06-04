@@ -1,45 +1,44 @@
-const Brevo = require("@getbrevo/brevo");
-
-const apiInstance = new Brevo.TransactionalEmailsApi();
-
-apiInstance.setApiKey(
-  Brevo.TransactionalEmailsApiApiKeys.apiKey,
-  process.env.BREVO_API_KEY
-);
+const axios = require("axios");
 
 const sendOTPEmail = async (userEmail, otpCode) => {
   try {
-    const email = {
-      sender: {
-        name: "ChatBox",
-        email: "youraccount@gmail.com",
-      },
-      to: [
-        {
-          email: userEmail,
+    const response = await axios.post(
+      "https://api.brevo.com/v3/smtp/email",
+      {
+        sender: {
+          name: "ChatBox",
+          email: "your_verified_email@gmail.com",
         },
-      ],
-      subject: "Mã OTP xác thực",
-      htmlContent: `
-        <h2>Xác thực tài khoản</h2>
-        <p>Mã OTP của bạn là:</p>
-        <h1>${otpCode}</h1>
-        <p>Mã có hiệu lực trong 5 phút.</p>
-      `,
-    };
+        to: [
+          {
+            email: userEmail,
+          },
+        ],
+        subject: "Mã OTP xác thực",
+        htmlContent: `
+          <h2>Xác thực tài khoản</h2>
+          <h1>${otpCode}</h1>
+          <p>Mã có hiệu lực trong 5 phút.</p>
+        `,
+      },
+      {
+        headers: {
+          "api-key": process.env.BREVO_API_KEY,
+          "Content-Type": "application/json",
+        },
+      }
+    );
 
-    const result = await apiInstance.sendTransacEmail(email);
-
-    console.log("Email sent:", result);
+    console.log("Email sent:", response.data);
 
     return { success: true };
   } catch (error) {
-    console.error("Brevo Error:", error);
+    console.error(
+      "Brevo Error:",
+      error.response?.data || error.message
+    );
 
-    return {
-      success: false,
-      error,
-    };
+    return { success: false, error };
   }
 };
 
