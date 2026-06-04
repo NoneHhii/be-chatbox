@@ -799,7 +799,7 @@ exports.joinGroupByCode = async (req, res) => {
         await pool.query(
             `INSERT INTO Conversation_member (id, conversation_id, user_id, role) 
              VALUES ($1, $2, $3, 'member') ON CONFLICT DO NOTHING`,
-            [uuidv4 ,conversation_id, userId]
+            [uuidv4() ,conversation_id, userId]
         );
         res.json({ conversationId: conversation_id, status: "success" });
     } catch (err) { res.status(500).json(err.message); }
