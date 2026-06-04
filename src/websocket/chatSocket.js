@@ -96,43 +96,53 @@ module.exports = (io) => {
 
     // A. Phát thông báo cuộc gọi đến (Để App nhận biết tự bật màn hình CallScreen lên)
     socket.on("call_user", (data) => {
-      console.log("========== SIGNAL ==========");
-      console.log("FROM:", socket.userId);
-      console.log("TO:", data.targetUserId);
-      console.log("TYPE:", data.type);
-      console.log("PHASE:", data.phase);
-      console.log("DATA:", JSON.stringify(data, null, 2));
-      console.log("============================");
       if (!data.targetUserId) return;
 
       const target = io.to(data.targetUserId);
+      const convId = data.conversationId || data.id;
 
       switch (data.type) {
         case "webrtc:offer":
+          console.log(`[WebRTC] Chuyển tiếp Offer: ${socket.userId} -> ${data.targetUserId}`);
           target.emit("webrtc:offer", {
-            ...data,
+            conversationId: convId,
             fromUserId: socket.userId,
+            senderId: socket.userId,
+            signal: data.sdp || data.signal,
+            sdp: data.sdp || data.signal
           });
           break;
 
         case "webrtc:answer":
+          console.log(`[WebRTC] Chuyển tiếp Answer: ${socket.userId} -> ${data.targetUserId}`);
           target.emit("webrtc:answer", {
-            ...data,
+            conversationId: convId,
             fromUserId: socket.userId,
+            senderId: socket.userId,
+            signal: data.sdp || data.signal,
+            sdp: data.sdp || data.signal
           });
           break;
 
         case "webrtc:ice-candidate":
+          // FIX CHÍ MẠNG: Bóc tách trực tiếp object candidate ra để không bị bọc lồng 2 lần
           target.emit("webrtc:ice-candidate", {
-            ...data,
+            conversationId: convId,
             fromUserId: socket.userId,
+            senderId: socket.userId,
+            candidate: data.candidate?.candidate ? data.candidate : data.candidate
           });
           break;
 
         default:
+          // Xử lý các lệnh trạng thái webrtc:join (invite / accept)
+          console.log(`[Call Phase] Giai đoạn: ${data.phase} | ${socket.userId} -> ${data.targetUserId}`);
           target.emit("incoming_call", {
             ...data,
+            conversationId: convId,
+            id: convId,
             fromUserId: socket.userId,
+            senderId: socket.userId
           });
       }
     });
