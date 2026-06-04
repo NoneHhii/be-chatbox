@@ -8,7 +8,7 @@ const sendOTPEmail = async (userEmail, otpCode) => {
   
   try {
     const data = await resend.emails.send({
-      from: 'ChatBox <onboarding@resend.dev>', // Giữ nguyên email mặc định này của Resend để test miễn phí
+      from: 'ChatBox <noreply@be-chatbox-1.onrender.com>', // Giữ nguyên email mặc định này của Resend để test miễn phí
       to: userEmail,
       subject: `Mã xác thực OTP của bạn: ${otpCode}`,
       html: `
