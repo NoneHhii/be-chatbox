@@ -111,46 +111,52 @@ exports.sendMessage = async (req, res) => {
 };
 
 exports.getMessages = async (req, res) => {
+    try {
+        const { convId } = req.params;
+        const userId = req.user.id;
 
-    const { convId } = req.params;
+        // 1. Sửa luôn cái lỗi khai báo {limit} sai cú pháp hôm trước nhé Khoa (bỏ dấu {})
+        const limit = parseInt(req.query.limit) || 20;
+        const cursor = req.query.cursor;
 
-    const {limit} = parseInt(req.query.limit) || 20;
+        // Mảng values ban đầu cố định: $1 là convId, $2 là userId
+        const values = [convId, userId];
 
-    const cursor = req.query.cursor;
-    const userId = req.user.id;
+        let query = `
+            SELECT m.*, a.file_url, a.file_size, u.username AS sender_name, u.avatar AS sender_avatar 
+            FROM public.message m 
+            LEFT JOIN public.attachment a ON a.message_id = m.message_id 
+            LEFT JOIN account u ON u.user_id = m.sender_id 
+            WHERE m.conversation_id = $1 
+            AND NOT EXISTS ( 
+                SELECT 1 FROM Message_Deleted_By_User d 
+                WHERE d.message_id = m.message_id AND d.user_id = $2  
+            )
+        `;
 
-    let query = `
-        SELECT m.*, a.file_url, a.file_size, u.username AS sender_name, u.avatar AS sender_avatar FROM public.message m 
-        LEFT JOIN public.attachment a ON a.message_id = m.message_id 
-        LEFT JOIN account u ON u.user_id = m.sender_id 
-        WHERE m.conversation_id = $1 
-        AND NOT EXISTS ( 
-            SELECT 1 FROM Message_Deleted_By_User d 
-            WHERE d.message_id = m.message_id AND d.user_id = $2  
-        )
-    `;
+        // 2. Xử lý cursor động: push cursor vào thì nó sẽ nằm ở vị trí cuối mảng hiện tại (vị trí thứ 3)
+        if (cursor) {
+            values.push(cursor);
+            query += ` AND m.create_at < $${values.length}`; // Tự động tăng thành $3, khớp với cursor
+        }
 
-    const values = [convId, userId];
+        // 3. Xử lý LIMIT động: push limit vào mảng (sẽ là vị trí thứ 3 nếu không có cursor, hoặc thứ 4 nếu có cursor)
+        values.push(limit);
+        query += ` ORDER BY m.create_at DESC LIMIT $${values.length}`;
 
-    if (cursor) {
-        values.push(cursor);
-        query += ` AND m.create_at < $2`;
-        
+        const result = await pool.query(query, values);
+
+        res.json({
+            messages: result.rows,
+            nextCursor: result.rows.length
+                ? result.rows[result.rows.length - 1].create_at
+                : null
+        });
+
+    } catch (err) {
+        console.error("Lỗi getMessages:", err);
+        res.status(500).json({ error: err.message });
     }
-
-    query += ` ORDER BY m.create_at DESC LIMIT $${values.length + 1}`;
-    values.push(limit);
-
-    const result = await pool.query(query, values);
-
-    res.json({
-    messages: result.rows,
-    nextCursor:
-        result.rows.length
-        ? result.rows[result.rows.length - 1].create_at
-        : null
-    });
-
 };
 
 exports.searchMessage = async (req, res) => {

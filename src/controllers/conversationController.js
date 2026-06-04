@@ -606,8 +606,11 @@ exports.searchMessages = async (req, res) => {
     const { conversationId, keyword } = req.query;
     try {
         const result = await pool.query(
-            `SELECT * FROM Message 
-             WHERE conversation_id = $1 AND message_type = 'text' AND content ILIKE $2
+            `SELECT * FROM public.message 
+             WHERE conversation_id = $1 
+               AND content IS NOT NULL 
+               AND content ILIKE $2 
+               AND is_recalled = false 
              ORDER BY create_at DESC`,
             [conversationId, `%${keyword}%`]
         );
@@ -620,14 +623,18 @@ exports.getCloudMedia = async (req, res) => {
     const { conversationId, type } = req.query; // type = 'image' hoặc 'file'
     try {
         const result = await pool.query(
-            `SELECT message_id, content as filename, a.file_url as url, create_at FROM Messages 
+            `SELECT m.message_id, content as filename, a.file_url as url, create_at FROM Message m 
              LEFT JOIN public.attachment a ON a.message_id = m.message_id 
              WHERE conversation_id = $1 AND message_type = $2
              ORDER BY create_at DESC`,
             [conversationId, type]
         );
         res.json(result.rows);
-    } catch (err) { res.status(500).json(err.message); }
+    } catch (err) { 
+        res.status(500).json(err.message);
+        console.log(err);
+        
+    }
 };
 
 // 3. Ghim / Bỏ ghim trò chuyện
@@ -790,9 +797,9 @@ exports.joinGroupByCode = async (req, res) => {
 
         // Nếu nhóm cần duyệt, thêm vào trạng thái chờ duyệt (Hoặc thêm thẳng nếu không cần)
         await pool.query(
-            `INSERT INTO Conversation_member (conversation_id, user_id, role) 
-             VALUES ($1, $2, 'member') ON CONFLICT DO NOTHING`,
-            [conversation_id, userId]
+            `INSERT INTO Conversation_member (id, conversation_id, user_id, role) 
+             VALUES ($1, $2, $3, 'member') ON CONFLICT DO NOTHING`,
+            [uuidv4 ,conversation_id, userId]
         );
         res.json({ conversationId: conversation_id, status: "success" });
     } catch (err) { res.status(500).json(err.message); }
