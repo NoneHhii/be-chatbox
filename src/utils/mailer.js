@@ -4,7 +4,9 @@ const sendOTPEmail = async (userEmail, otpCode) => {
 
     console.log("Check EMAIL_PASS:", process.env.EMAIL_PASS ? "Đã nhận" : "Chưa nhận");
   const transporter = nodemailer.createTransport({
-    service: "gmail",
+    host: "smtp.gmail.com",
+    port: 465,
+    secure: true,
     auth: {
       user: "thienkhoatgddqng@gmail.com",
       pass: process.env.EMAIL_PASS,
@@ -31,12 +33,18 @@ const sendOTPEmail = async (userEmail, otpCode) => {
   };
 
   try {
+    console.log("Bắt đầu gửi mail...");
     const info = await transporter.sendMail(mailOptions);
     console.log("OTP Sent: " + info.response);
+    console.log("Đã gửi mail");
+    console.log(info);
     return { success: true };
   } catch (error) {
-    console.error("Lỗi gửi OTP: ", error);
-    return { success: false, error };
+    console.error("===== MAIL ERROR =====");
+    console.error(error);
+    console.error(error.code);
+    console.error(error.response);
+    console.error("======================");
   }
 };
 
