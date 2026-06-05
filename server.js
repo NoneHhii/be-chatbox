@@ -9,6 +9,7 @@ const authRoutes = require("./src/routes/authRoutes");
 const messageRoutes = require("./src/routes/messageRoute");
 const friendRoutes = require("./src/routes/friendRoute");
 const conversationRoutes = require('./src/routes/conversationRoute');
+const aiRoute = require('./src/routes/aiRoute');
 const chatSocket = require("./src/websocket/chatSocket");
 
 const app = express();
@@ -21,6 +22,7 @@ app.use("/api/auth", authRoutes);
 app.use("/api/messages", messageRoutes);
 app.use("/api/friends", friendRoutes);
 app.use("/api/conversations", conversationRoutes);
+app.use("/api/ai", aiRoute);
 
 const server = http.createServer(app);
 
